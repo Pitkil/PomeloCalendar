@@ -3,7 +3,7 @@
 const STORAGE_EVENTS = 'swu-calendar-events-v2';
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2';
 const STORAGE_FOCUS = 'swu-calendar-focus-v2';
-const CLOUD_AUTH_URL = 'https://swu-calendar-auth-314241-5-1488632993.sh.run.tcloudbase.com';
+const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1';
 const $ = (id) => document.getElementById(id);
 const pad = (value) => String(value).padStart(2, '0');
 const toDateKey = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -32,14 +32,12 @@ function defaultSettings() {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    opacity: 94,
-    backendUrl: CLOUD_AUTH_URL
+    opacity: 94
   };
 }
 
 const today = toDateKey(new Date());
 const settings = { ...defaultSettings(), ...loadJson(STORAGE_SETTINGS, {}) };
-if (!settings.backendUrl || settings.backendUrl === 'http://127.0.0.1:8787') settings.backendUrl = CLOUD_AUTH_URL;
 const initialEvents = [{
   id: uid('welcome'), title: '完成校园日历实验', date: today, startTime: '19:00', endTime: '20:30',
   category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal', completed: false
@@ -49,11 +47,13 @@ const focusRecord = loadJson(STORAGE_FOCUS, { date: today, rounds: 0, minutes: 0
 const state = {
   settings,
   events: loadJson(STORAGE_EVENTS, initialEvents),
+  accounts: loadJson(STORAGE_ACCOUNTS, []),
   selectedDate: today,
   cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   view: 'month',
   query: '',
   editingId: '',
+  editingAccountId: '',
   timer: {
     mode: 'focus',
     running: false,
@@ -70,6 +70,7 @@ const categoryColors = { 学习: '#d76a4a', 课程: '#176b55', 考试: '#a34f54'
 function save() {
   localStorage.setItem(STORAGE_EVENTS, JSON.stringify(state.events));
   localStorage.setItem(STORAGE_SETTINGS, JSON.stringify(state.settings));
+  localStorage.setItem(STORAGE_ACCOUNTS, JSON.stringify(state.accounts));
 }
 
 function teachingWeekOf(dateKey) {
@@ -168,7 +169,8 @@ function renderWeek() {
     const date = addDays(start, index);
     const key = toDateKey(date);
     const events = sortEvents(state.events.filter((item) => item.date === key && matchesQuery(item)));
-    const cards = events.length ? events.map((item) => `<article class="week-event" data-event-id="${item.id}" style="--event-color:${item.color}"><strong>${escapeHtml(item.title)}</strong><span>${item.startTime}-${item.endTime}</span><span>${escapeHtml(item.location || item.category)}</span></article>`).join('') : '<div class="free-day">空闲</div>';
+    const visibleEvents = events.slice(0, 2);
+    const cards = events.length ? `${visibleEvents.map((item) => `<article class="week-event" data-event-id="${item.id}" style="--event-color:${item.color}"><strong>${escapeHtml(item.title)}</strong><span>${item.startTime}-${item.endTime}</span><span>${escapeHtml(item.location || item.category)}</span></article>`).join('')}${events.length > 2 ? `<div class="week-more">+${events.length - 2} 门课程</div>` : ''}` : '<div class="free-day">空闲</div>';
     return `<div class="week-day ${key === today ? 'is-today' : ''}"><button class="week-day-head" data-date="${key}"><span>周${['一', '二', '三', '四', '五', '六', '日'][index]}</span><span>${date.getMonth() + 1}/${date.getDate()}</span></button>${cards}</div>`;
   }).join('');
 }
@@ -215,8 +217,23 @@ function renderViews() {
   $('monthView').classList.toggle('hidden', state.view !== 'month');
   $('weekView').classList.toggle('hidden', state.view !== 'week');
   $('focusView').classList.toggle('hidden', state.view !== 'focus');
-  $('agendaPanel').classList.toggle('hidden', state.view === 'focus');
-  $('floatingAdd').classList.toggle('hidden', state.view === 'focus');
+  $('accountingView').classList.toggle('hidden', state.view !== 'accounting');
+  $('agendaPanel').classList.toggle('hidden', state.view === 'focus' || state.view === 'accounting');
+  $('floatingAdd').classList.toggle('hidden', state.view === 'focus' || state.view === 'accounting');
+}
+
+function renderAccounting() {
+  const prefix = today.slice(0, 7);
+  const rows = state.accounts.filter((item) => item.date.startsWith(prefix)).sort((a, b) => b.date.localeCompare(a.date));
+  const expense = rows.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0);
+  const income = rows.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0);
+  $('monthExpense').textContent = `¥${expense.toFixed(2)}`;
+  $('monthIncome').textContent = `¥${income.toFixed(2)}`;
+  $('monthBalance').textContent = `¥${(income - expense).toFixed(2)}`;
+  const totals = {};
+  rows.filter((item) => item.type === 'expense').forEach((item) => { totals[item.category] = (totals[item.category] || 0) + Number(item.amount); });
+  $('categoryStats').innerHTML = Object.keys(totals).length ? Object.entries(totals).sort((a,b) => b[1]-a[1]).map(([name, amount]) => `<div class="category-stat"><span>${escapeHtml(name)}</span><strong>¥${amount.toFixed(2)}</strong><i style="width:${Math.min(100, amount / Math.max(expense, 1) * 100)}%"></i></div>`).join('') : '<div class="empty-state"><b>本月还没有消费</b><span>记下第一笔，让预算更有方向。</span></div>';
+  $('ledgerList').innerHTML = rows.length ? rows.map((item) => `<article class="ledger-item" data-account-id="${item.id}"><div class="ledger-icon ${item.type}">${item.type === 'income' ? '↑' : '↓'}</div><div><strong>${escapeHtml(item.category)}</strong><small>${item.date}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></div><b class="${item.type}">${item.type === 'income' ? '+' : '-'}¥${Number(item.amount).toFixed(2)}</b></article>`).join('') : '<div class="empty-state"><b>账本是空的</b><span>点击“记一笔”开始记录。</span></div>';
 }
 
 function renderTimer() {
@@ -240,8 +257,9 @@ function renderAll() {
   renderWeek();
   renderAgenda();
   renderSearch();
+  renderAccounting();
   renderTimer();
-  $('syncStatus').textContent = localStorage.getItem('swu-calendar-sync-status') || '尚未同步课表';
+  $('syncStatus').textContent = localStorage.getItem('swu-calendar-sync-status') || '尚未导入课表';
 }
 
 function selectDate(key, scroll = false) {
@@ -255,10 +273,6 @@ function selectDate(key, scroll = false) {
 function openEventDialog(id = '') {
   state.editingId = id;
   const item = id ? state.events.find((entry) => entry.id === id) : null;
-  if (item?.source === 'course') {
-    alert(`${item.title}\n${item.startTime}-${item.endTime}\n${item.location || '地点待定'}${item.teacher ? `\n${item.teacher}` : ''}\n${item.notes || ''}`);
-    return;
-  }
   $('eventDialogTitle').textContent = item ? '编辑日程' : '新增日程';
   $('eventTitle').value = item?.title || '';
   $('eventDate').value = item?.date || state.selectedDate;
@@ -266,6 +280,7 @@ function openEventDialog(id = '') {
   $('eventEnd').value = item?.endTime || '10:00';
   $('eventCategory').value = item?.category || '学习';
   $('eventLocation').value = item?.location || '';
+  $('eventTeacher').value = item?.teacher || '';
   $('eventNotes').value = item?.notes || '';
   $('deleteEvent').classList.toggle('hidden', !item);
   $('eventDialog').showModal();
@@ -302,7 +317,8 @@ function submitEvent(event) {
     location: $('eventLocation').value.trim(),
     notes: $('eventNotes').value.trim(),
     color: categoryColors[category] || '#d76a4a',
-    source: existing?.source === 'focus' ? 'focus' : 'personal',
+    source: existing?.source || 'personal',
+    teacher: $('eventTeacher').value.trim(),
     completed: existing?.completed || false
   };
   const conflict = state.events.find((entry) => entry.id !== item.id && entry.date === item.date && minutesOf(entry.startTime) < minutesOf(item.endTime) && minutesOf(entry.endTime) > minutesOf(item.startTime));
@@ -329,7 +345,6 @@ function openSettings() {
   $('settingAccent').value = state.settings.accent;
   $('settingWallpaper').value = state.settings.wallpaper === 'custom' ? 'paper' : state.settings.wallpaper;
   $('settingOpacity').value = state.settings.opacity;
-  $('settingBackend').value = state.settings.backendUrl;
   $('settingsDialog').showModal();
 }
 
@@ -344,8 +359,7 @@ function submitSettings(event) {
     breakMinutes: Math.max(1, Number($('settingBreakMinutes').value || 5)),
     accent: $('settingAccent').value,
     wallpaper: state.settings.wallpaper === 'custom' && state.settings.customWallpaper ? 'custom' : $('settingWallpaper').value,
-    opacity: Math.max(72, Math.min(100, Number($('settingOpacity').value || 94))),
-    backendUrl: $('settingBackend').value.trim().replace(/\/$/, '')
+    opacity: Math.max(72, Math.min(100, Number($('settingOpacity').value || 94)))
   });
   resetTimer(state.timer.mode);
   save();
@@ -407,43 +421,7 @@ const demoCourses = [
   { id: 'pe', title: '体育', teacher: '王老师', place: '第一运动场', weekday: 5, sessions: '3-4节', weeks: '2-16周(双)' }
 ];
 
-function openSync() {
-  $('syncYear').value = state.settings.semesterTitle.slice(0, 4);
-  $('syncTerm').value = state.settings.semesterTitle.endsWith('-2') ? '2' : '1';
-  $('syncPassword').value = '';
-  $('syncDialog').showModal();
-}
-
-async function submitSync(event) {
-  event.preventDefault();
-  if (!state.settings.backendUrl) { showToast('请先在设置中填写后端地址'); return; }
-  const submitButton = $('syncForm').querySelector('[type="submit"]');
-  submitButton.disabled = true;
-  submitButton.textContent = '同步中…';
-  try {
-    const response = await fetch(`${state.settings.backendUrl}/api/swu/schedule`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: $('syncUsername').value.trim(), password: $('syncPassword').value, year: Number($('syncYear').value), term: Number($('syncTerm').value) })
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body?.error?.message || `后端返回 ${response.status}`);
-    const courses = body.courses || body.schedule || body.res || [];
-    if (!Array.isArray(courses)) throw new Error('课表格式不正确');
-    replaceCourses(courses);
-    const status = `同步成功 · ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
-    localStorage.setItem('swu-calendar-sync-status', status);
-    $('syncDialog').close();
-    showToast(`已同步 ${courses.length} 门课程`);
-  } catch (error) {
-    showToast(`同步失败：${error.message}`);
-  } finally {
-    $('syncPassword').value = '';
-    submitButton.disabled = false;
-    submitButton.textContent = '安全同步';
-    renderAll();
-  }
-}
+function openSync() { $('schedulePaste').value = ''; $('syncDialog').showModal(); }
 
 function splitImportLine(line, delimiter) {
   const cells = [];
@@ -467,9 +445,24 @@ function importWeekday(value) {
   return ({ 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 })[text.replace(/^星期?/, '')] || 0;
 }
 
+function normalizeCourse(course = {}) {
+  return {
+    id: course.id || course.course_id || course.kch_id || '',
+    title: course.title || course.kcmc || course.name || '',
+    teacher: course.teacher || course.xm || '',
+    weekday: importWeekday(course.weekday ?? course.xqj ?? course.week ?? 0),
+    sessions: course.sessions || course.jc || course.section || '1-2节',
+    weeks: course.weeks || course.zcd || course.weekList || '',
+    place: course.place || course.cdmc || course.classroom || '',
+    date: course.date || ''
+  };
+}
+
 function importCoursesFromText(raw) {
   const text = String(raw || '').replace(/^\uFEFF/, '').trim();
   if (!text) throw new Error('请先选择或粘贴课表内容');
+  const pdfCourses = parsePdfSchedule(text);
+  if (pdfCourses.length) return pdfCourses;
   try {
     const parsed = JSON.parse(text);
     const list = Array.isArray(parsed) ? parsed : (parsed.courses || parsed.kbList || parsed.schedule || parsed.res);
@@ -509,6 +502,84 @@ function importManualSchedule() {
   } catch (error) {
     showToast(`导入失败：${error.message}`);
   }
+}
+
+async function extractPdfText(file) {
+  const pdfjs = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjs.getDocument({ data: buffer }).promise;
+  const pages = [];
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    const rows = [];
+    content.items.forEach((item) => {
+      const y = Math.round(item.transform?.[5] || 0);
+      let row = rows.find((entry) => Math.abs(entry.y - y) <= 3);
+      if (!row) { row = { y, cells: [] }; rows.push(row); }
+      row.cells.push({ x: item.transform?.[4] || 0, text: item.str });
+    });
+    const ordered = rows.sort((a, b) => b.y - a.y);
+    const header = ordered.find((row) => row.cells.some((cell) => /星期一/.test(cell.text)));
+    const dayXs = header ? header.cells.filter((cell) => /^星期[一二三四五六日天]$/.test(cell.text.trim())).sort((a, b) => a.x - b.x).map((cell) => cell.x) : [];
+    pages.push(ordered.map((row) => {
+      const dayCells = Array.from({ length: 7 }, () => []);
+      row.cells.forEach((cell) => {
+        if (!dayXs.length) return;
+        let nearest = 0; let distance = Infinity;
+        dayXs.forEach((x, index) => { const next = Math.abs(cell.x - x); if (next < distance) { nearest = index; distance = next; } });
+        if (distance < 95) dayCells[nearest].push(cell.text);
+      });
+      return dayXs.length ? dayCells.map((cells) => cells.join(' ')).join('\t') : row.cells.sort((a, b) => a.x - b.x).map((cell) => cell.text).join('\t');
+    }).join('\n'));
+  }
+  return pages.join('\n');
+}
+
+function parsePdfSchedule(text) {
+  if (!/时间段|星期一/.test(text)) return [];
+  const pending = Array.from({ length: 7 }, () => null);
+  const result = [];
+  const finish = (day) => { const item = pending[day]; if (!item || !item.sessions) return; result.push(normalizeCourse({ id: `pdf-${day}-${result.length + 1}`, title: item.title, teacher: item.teacher, place: item.place, weekday: day + 1, sessions: item.sessions, weeks: item.weeks })); pending[day] = null; };
+  text.split(/\r?\n/).forEach((line) => {
+    if (!line.trim() || /时间段|202\d-202\d学年/.test(line)) return;
+    line.split('\t').forEach((rawCell, day) => {
+      const cell = rawCell.trim(); if (!cell) return;
+      const titleMatch = cell.match(/^(.+?)[◆◇](?:\s|$)/);
+      const detail = cell.match(/^\(([^)]*节)\)\s*([^/]*)/);
+      if (titleMatch && !detail) { finish(day); pending[day] = { title: titleMatch[1].trim(), teacher: '', place: '', sessions: '', weeks: '' }; return; }
+      if (!pending[day]) return;
+      const item = pending[day];
+      if (detail) { item.sessions = detail[1]; item.weeks = detail[2].replace(/第/g, '').trim(); }
+      const teacher = cell.match(/教师:([^/]+)/); if (teacher) item.teacher = `${item.teacher}${item.teacher ? ',' : ''}${teacher[1].trim()}`;
+      const place = cell.match(/场地:([^/]+)/); if (place) item.place = place[1].trim();
+    });
+  });
+  pending.forEach((_, day) => finish(day));
+  return result.flat();
+}
+
+function openAccountDialog(id = '') {
+  state.editingAccountId = id;
+  const item = id ? state.accounts.find((entry) => entry.id === id) : null;
+  $('accountType').value = item?.type || 'expense'; $('accountAmount').value = item?.amount || '';
+  $('accountCategory').value = item?.category || '餐饮'; $('accountDate').value = item?.date || today; $('accountNote').value = item?.note || '';
+  $('accountDialogTitle').textContent = item ? '编辑账目' : '记一笔'; $('deleteAccount').classList.toggle('hidden', !item); $('accountDialog').showModal();
+}
+
+function submitAccount(event) {
+  event.preventDefault();
+  const amount = Number($('accountAmount').value); if (!(amount > 0)) { showToast('请输入大于 0 的金额'); return; }
+  const item = { id: state.editingAccountId || uid('account'), type: $('accountType').value, amount: amount.toFixed(2), category: $('accountCategory').value, date: $('accountDate').value, note: $('accountNote').value.trim() };
+  state.accounts = [...state.accounts.filter((entry) => entry.id !== item.id), item]; save(); $('accountDialog').close(); renderAll(); showToast(state.editingAccountId ? '账目已更新' : '已记账');
+}
+
+function deleteAccount() { if (!state.editingAccountId || !confirm('确定删除这笔账目吗？')) return; state.accounts = state.accounts.filter((item) => item.id !== state.editingAccountId); save(); $('accountDialog').close(); renderAll(); showToast('账目已删除'); }
+
+function exportAccounts() {
+  const lines = ['类型,金额,分类,日期,备注', ...state.accounts.map((item) => `${item.type === 'income' ? '收入' : '支出'},${item.amount},${item.category},${item.date},"${String(item.note || '').replaceAll('"', '""')}"`)]
+  download(`swu-campus-accounts-${today}.csv`, '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8'); showToast('账本已导出')
 }
 
 function resetTimer(mode = state.timer.mode) {
@@ -620,15 +691,23 @@ function bindEvents() {
   $('exportIcs').addEventListener('click', exportIcs);
   $('exportBackup').addEventListener('click', () => { download(`swu-calendar-backup-${today}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), settings: { ...state.settings, customWallpaper: '' }, events: state.events }, null, 2), 'application/json;charset=utf-8'); showToast('备份文件已导出'); });
   $('syncOpen').addEventListener('click', openSync);
-  $('syncForm').addEventListener('submit', submitSync);
   $('manualImport').addEventListener('click', importManualSchedule);
+  $('manualImportFooter').addEventListener('click', importManualSchedule);
   $('scheduleFile').addEventListener('change', async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    try { $('schedulePaste').value = await file.text(); showToast(`已载入 ${file.name}，点击“导入到日历”完成解析`); }
+    try {
+      $('schedulePaste').value = file.name.toLowerCase().endsWith('.pdf') ? await extractPdfText(file) : await file.text();
+      showToast(`已载入 ${file.name}，请检查识别结果后导入`);
+    }
     catch { showToast('文件读取失败，请改用文本粘贴'); }
   });
   $('importDemo').addEventListener('click', () => { replaceCourses(demoCourses); const status = '已导入示例课表'; localStorage.setItem('swu-calendar-sync-status', status); $('syncDialog').close(); renderAll(); showToast('示例课表已导入'); });
+  $('addExpense').addEventListener('click', () => openAccountDialog());
+  $('exportAccounts').addEventListener('click', exportAccounts);
+  $('accountForm').addEventListener('submit', submitAccount);
+  $('deleteAccount').addEventListener('click', deleteAccount);
+  $('ledgerList').addEventListener('click', (event) => { const row = event.target.closest('[data-account-id]'); if (row) openAccountDialog(row.dataset.accountId); });
   $('timerToggle').addEventListener('click', toggleTimer);
   $('timerReset').addEventListener('click', () => resetTimer());
   document.querySelectorAll('[data-focus-mode]').forEach((button) => button.addEventListener('click', () => resetTimer(button.dataset.focusMode)));

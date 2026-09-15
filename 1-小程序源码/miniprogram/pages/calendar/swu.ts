@@ -26,8 +26,9 @@ interface Settings {
   wallpaper: string
   customWallpaper: string
   cardOpacity: number
-  backendUrl: string
 }
+
+interface AccountEntry { id: string; type: 'expense' | 'income'; amount: number; category: string; date: string; note: string }
 
 interface CourseLike {
   id?: string
@@ -50,8 +51,7 @@ interface CourseLike {
 const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
-const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
-const CLOUD_SERVICE_NAME = 'swu-calendar-auth'
+const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
 let timerId: number | undefined
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -87,8 +87,7 @@ const defaultSettings = (): Settings => {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    cardOpacity: 94,
-    backendUrl: ''
+    cardOpacity: 94
   }
 }
 
@@ -206,6 +205,8 @@ Page({
     editorVisible: false,
     settingsVisible: false,
     syncVisible: false,
+    scheduleText: '',
+    accountingVisible: false,
     editingId: '',
     categories: ['学习', '课程', '考试', '作业', '活动', '生活'],
     categoryColors: ['#d76a4a', '#176b55', '#a34f54', '#d29b36', '#3d6f89', '#7a6a58'],
@@ -232,8 +233,14 @@ Page({
       mode: 'focus', running: false, durationSeconds: 1500, secondsLeft: 1500,
       display: '25:00', taskTitle: '', roundsToday: 0, focusedMinutesToday: 0
     },
-    syncForm: { username: '', password: '', year: '', term: '1' },
-    syncStatus: '尚未同步',
+    syncStatus: '尚未导入课表',
+    accounts: [] as AccountEntry[],
+    accountEditingId: '',
+    accountForm: { type: 'expense', amount: '', categoryIndex: 0, date: '', note: '' },
+    accountCategories: ['餐饮', '交通', '学习', '购物', '娱乐', '住宿', '医疗', '其他'],
+    accountTypeOptions: ['支出', '收入'],
+    monthExpense: '¥0.00', monthIncome: '¥0.00', monthBalance: '¥0.00',
+    categoryStats: [] as any[],
     stats: { todayCount: 0, completed: 0, focusMinutes: 0 }
   },
 
@@ -243,6 +250,7 @@ Page({
     const savedSettings = wx.getStorageSync(STORAGE_SETTINGS) as Settings
     const settings = savedSettings && savedSettings.semesterStart ? { ...defaultSettings(), ...savedSettings } : defaultSettings()
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
+    const savedAccounts = wx.getStorageSync(STORAGE_ACCOUNTS) as AccountEntry[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
     const initialEvents: CalendarEvent[] = savedEvents && savedEvents.length ? savedEvents : [
       {
@@ -259,6 +267,7 @@ Page({
       settings,
       panelAlpha: settings.cardOpacity >= 100 ? '1' : `0.${settings.cardOpacity}`,
       events: initialEvents,
+      accounts: savedAccounts || [],
       focus: {
         ...this.data.focus,
         durationSeconds: focusSeconds,
@@ -267,7 +276,6 @@ Page({
         roundsToday: focusRecord.date === todayKey ? Number(focusRecord.rounds || 0) : 0,
         focusedMinutesToday: focusRecord.date === todayKey ? Number(focusRecord.minutes || 0) : 0
       },
-      syncForm: { ...this.data.syncForm, year: settings.semesterTitle.slice(0, 4), term: settings.semesterTitle.endsWith('-2') ? '2' : '1' }
     })
     this.applyWallpaper()
     this.refreshView()
@@ -294,6 +302,7 @@ Page({
   persist() {
     wx.setStorageSync(STORAGE_EVENTS, this.data.events)
     wx.setStorageSync(STORAGE_SETTINGS, this.data.settings)
+    wx.setStorageSync(STORAGE_ACCOUNTS, this.data.accounts)
   },
 
   applyWallpaper() {
@@ -346,7 +355,8 @@ Page({
         label: `${date.getMonth() + 1}/${date.getDate()}`,
         weekday: this.data.weekdays[index],
         today: key === this.data.todayKey,
-        events: sortEvents(events.filter((item) => item.date === key))
+        events: sortEvents(events.filter((item) => item.date === key)).slice(0, 2),
+        moreCount: events.filter((item) => item.date === key).length > 2 ? events.filter((item) => item.date === key).length - 2 : 0
       }
     })
   },
@@ -364,6 +374,13 @@ Page({
       completed: events.filter((item) => item.date === this.data.todayKey && item.completed).length,
       focusMinutes: Number(this.data.focus.focusedMinutesToday || 0)
     }
+    const monthPrefix = this.data.todayKey.slice(0, 7)
+    const monthAccounts = (this.data.accounts as AccountEntry[]).filter((item) => item.date.startsWith(monthPrefix)).sort((a, b) => b.date.localeCompare(a.date))
+    const monthExpense = monthAccounts.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0)
+    const monthIncome = monthAccounts.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0)
+    const categoryTotals: Record<string, number> = {}
+    monthAccounts.filter((item) => item.type === 'expense').forEach((item) => { categoryTotals[item.category] = (categoryTotals[item.category] || 0) + Number(item.amount) })
+    const categoryStats = Object.keys(categoryTotals).map((name) => ({ name, amount: categoryTotals[name].toFixed(2), percent: Math.min(100, categoryTotals[name] / Math.max(monthExpense, 1) * 100) })).sort((a, b) => Number(b.amount) - Number(a.amount))
     this.setData({
       monthTitle: `${this.data.year}年${this.data.month}月`,
       selectedLabel: `${selected.getMonth() + 1}月${selected.getDate()}日 · 周${['日', '一', '二', '三', '四', '五', '六'][selected.getDay()]}`,
@@ -372,7 +389,12 @@ Page({
       weekDays: this.buildWeekDays(),
       selectedEvents,
       searchResults,
-      stats
+      stats,
+      monthAccounts,
+      categoryStats,
+      monthExpense: `¥${monthExpense.toFixed(2)}`,
+      monthIncome: `¥${monthIncome.toFixed(2)}`,
+      monthBalance: `¥${(monthIncome - monthExpense).toFixed(2)}`
     })
   },
 
@@ -419,7 +441,7 @@ Page({
     this.setData({
       editorVisible: true,
       editingId: '',
-      form: { title: '', date, startTime: '09:00', endTime: '10:00', categoryIndex: 0, location: '', notes: '', color: this.data.categoryColors[0] }
+      form: { title: '', date, startTime: '09:00', endTime: '10:00', categoryIndex: 0, location: '', notes: '', color: this.data.categoryColors[0], teacher: '' }
     })
   },
 
@@ -427,14 +449,6 @@ Page({
     const id = String(event.currentTarget.dataset.id)
     const item = (this.data.events as CalendarEvent[]).find((entry) => entry.id === id)
     if (!item) return
-    if (item.source === 'course') {
-      wx.showModal({
-        title: item.title,
-        content: `${item.startTime}-${item.endTime}\n${item.location || '地点待定'}${item.teacher ? `\n${item.teacher}` : ''}\n${item.notes || ''}`,
-        showCancel: false
-      })
-      return
-    }
     const categoryIndex = Math.max(0, this.data.categories.indexOf(item.category))
     this.setData({
       editorVisible: true,
@@ -482,7 +496,8 @@ Page({
       id: this.data.editingId || makeId(),
       title: String(form.title).trim(), date: form.date, startTime: form.startTime, endTime: form.endTime,
       category: this.data.categories[Number(form.categoryIndex)], location: String(form.location || '').trim(),
-      notes: String(form.notes || '').trim(), color: form.color, source: 'personal'
+      notes: String(form.notes || '').trim(), color: form.color, source: ((this.data.events as CalendarEvent[]).find((entry) => entry.id === this.data.editingId)?.source || 'personal') as EventSource,
+      teacher: String((form as any).teacher || '').trim()
     }
     const conflict = (this.data.events as CalendarEvent[]).find((entry) =>
       entry.id !== item.id && entry.date === item.date && minutesOf(entry.startTime) < minutesOf(item.endTime) && minutesOf(entry.endTime) > minutesOf(item.startTime)
@@ -565,7 +580,6 @@ Page({
       focusMinutes: Math.max(1, Number(this.data.settings.focusMinutes || 25)),
       breakMinutes: Math.max(1, Number(this.data.settings.breakMinutes || 5)),
       cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94))),
-      backendUrl: String(this.data.settings.backendUrl || '').replace(/\/$/, '')
     }
     const seconds = settings.focusMinutes * 60
     this.setData({
@@ -651,11 +665,45 @@ Page({
   },
 
   openSync() { this.setData({ syncVisible: true }) },
-  closeSync() { this.setData({ syncVisible: false, 'syncForm.password': '' }) },
+  closeSync() { this.setData({ syncVisible: false, scheduleText: '' }) },
+  openJw() { wx.setClipboardData({ data: 'https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/' }); wx.showToast({ title: '办事大厅网址已复制', icon: 'none' }) },
+  onScheduleTextInput(event: any) { this.setData({ scheduleText: event.detail.value }) },
+  importPastedSchedule() { if (!String(this.data.scheduleText || '').trim()) { wx.showToast({ title: '请先粘贴课表', icon: 'none' }); return } this.importScheduleText(this.data.scheduleText) },
 
-  onSyncInput(event: any) {
-    const field = String(event.currentTarget.dataset.field)
-    this.setData({ [`syncForm.${field}`]: event.detail.value })
+  chooseScheduleFile() {
+    wx.chooseMessageFile({ count: 1, type: 'file', success: (result) => {
+      const file = result.tempFiles[0]
+      if (/\.pdf$/i.test(file.name || file.path)) {
+        wx.showModal({ title: 'PDF 课表导入', content: '小程序端无法直接读取 PDF 表格文字。请在电脑网页版选择 PDF 自动提取，或用 WPS 打开 PDF 后复制表格，再粘贴到这里。', showCancel: false })
+        return
+      }
+      wx.getFileSystemManager().readFile({ filePath: file.path, encoding: 'utf8', success: (res) => {
+        this.importScheduleText(String(res.data))
+      }, fail: () => wx.showToast({ title: '文件读取失败', icon: 'none' }) })
+    } })
+  },
+
+  importScheduleText(raw: string) {
+    try {
+      const text = String(raw || '').replace(/^\uFEFF/, '').trim()
+      let list: any[] = []
+      try { const parsed = JSON.parse(text); list = Array.isArray(parsed) ? parsed : (parsed.courses || parsed.schedule || parsed.res || []) } catch { /* delimited text */ }
+      if (!list.length) {
+        const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+        if (lines.length < 2) throw new Error('请提供 JSON、CSV 或制表符文本')
+        const delimiter = lines[0].includes('\t') ? '\t' : ','
+        const headers = lines[0].split(delimiter).map((v) => v.trim().toLowerCase())
+        const find = (names: string[]) => headers.findIndex((h) => names.some((name) => h === name || h.includes(name)))
+        const idx = { title: find(['课程名称', '课程', 'title', 'kcmc']), teacher: find(['教师', '老师', 'teacher', 'xm']), weekday: find(['星期', '周几', 'weekday', 'xqj']), sessions: find(['节次', 'sessions', 'jc']), weeks: find(['周次', 'weeks', 'zcd']), place: find(['教室', '地点', 'place', 'cdmc']) }
+        if (idx.title < 0 || idx.weekday < 0) throw new Error('表头需要包含课程名称和星期')
+        list = lines.slice(1).map((line) => { const cells = line.split(delimiter).map((v) => v.trim()); const day = Number(cells[idx.weekday]); return { title: cells[idx.title], teacher: idx.teacher >= 0 ? cells[idx.teacher] : '', weekday: day || 1, sessions: idx.sessions >= 0 ? cells[idx.sessions] : '1-2节', weeks: idx.weeks >= 0 ? cells[idx.weeks] : '', place: idx.place >= 0 ? cells[idx.place] : '' } })
+      }
+      const courses = list.map((item) => ({ ...item, title: item.title || item.kcmc })).filter((item) => item.title)
+      if (!courses.length) throw new Error('没有识别到有效课程')
+      this.replaceRemoteCourses(courses)
+      this.setData({ syncVisible: false, syncStatus: `已导入 ${courses.length} 门课程` })
+      wx.showToast({ title: `导入 ${courses.length} 门课程`, icon: 'success' })
+    } catch (error) { wx.showModal({ title: '导入失败', content: error instanceof Error ? error.message : '课表格式不正确', showCancel: false }) }
   },
 
   importDemoCourses() {
@@ -671,84 +719,17 @@ Page({
   replaceRemoteCourses(courses: CourseLike[]) {
     const personal = (this.data.events as CalendarEvent[]).filter((item) => item.source !== 'course')
     const remote = courses.flatMap((course, index) => courseToEvents(course, this.data.settings, index))
-    this.setData({ events: sortEvents([...personal, ...remote]), 'syncForm.password': '' })
+    this.setData({ events: sortEvents([...personal, ...remote]) })
     this.persist()
     this.refreshView()
   },
 
-  handleSyncResponse(response: any) {
-    try {
-      const body = response.data as any
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        const message = body && body.error && body.error.message ? body.error.message : `后端返回 ${response.statusCode}`
-        throw new Error(message)
-      }
-      const courses = body.courses || body.schedule || body.res || []
-      if (!Array.isArray(courses)) throw new Error('课表格式不正确')
-      this.replaceRemoteCourses(courses)
-      const now = new Date()
-      this.setData({ syncStatus: `同步成功 · ${pad(now.getHours())}:${pad(now.getMinutes())}`, syncVisible: false })
-      wx.showToast({ title: `同步 ${courses.length} 门课程`, icon: 'success' })
-    } catch (error) {
-      wx.showModal({ title: '同步失败', content: error instanceof Error ? error.message : '课表数据处理失败', showCancel: false })
-    }
-  },
-
-  handleSyncFailure(error: any, usingCloud = false) {
-    const hint = usingCloud
-      ? '请确认云托管服务 swu-calendar-auth 已部署并已发布。'
-      : '请检查备用 HTTPS 后端地址和网络。'
-    wx.showModal({
-      title: usingCloud ? '无法连接云托管' : '无法连接后端',
-      content: `${error.errMsg || '网络请求失败'}\n${hint}`,
-      showCancel: false
-    })
-  },
-
-  syncCourses() {
-    const backendUrl = String(this.data.settings.backendUrl || '')
-    if (!this.data.syncForm.username || !this.data.syncForm.password) {
-      wx.showToast({ title: '请填写学号和密码', icon: 'none' })
-      return
-    }
-    wx.showLoading({ title: '正在同步' })
-    const data = {
-      username: this.data.syncForm.username,
-      password: this.data.syncForm.password,
-      year: Number(this.data.syncForm.year),
-      term: Number(this.data.syncForm.term)
-    }
-    const complete = () => {
-      wx.hideLoading()
-      this.setData({ 'syncForm.password': '' })
-    }
-
-    const cloud = wx.cloud as any
-    if (cloud && typeof cloud.callContainer === 'function') {
-      cloud.callContainer({
-        config: { env: CLOUD_ENV_ID },
-        service: CLOUD_SERVICE_NAME,
-        path: '/api/swu/schedule',
-        method: 'POST',
-        header: { 'content-type': 'application/json' },
-        data,
-        timeout: 30_000,
-        success: (response) => this.handleSyncResponse(response),
-        fail: (error) => this.handleSyncFailure(error, true),
-        complete
-      })
-      return
-    }
-
-    if (!backendUrl) {
-      complete()
-      wx.showModal({ title: '云开发不可用', content: '当前运行环境不支持云托管调用，请在设置中填写备用 HTTPS 后端地址。', showCancel: false })
-      return
-    }
-    wx.request({
-      url: `${backendUrl}/api/swu/schedule`, method: 'POST', data,
-      success: (response) => this.handleSyncResponse(response),
-      fail: (error) => this.handleSyncFailure(error), complete
-    })
-  }
+  openAccount(event?: any) { const id = event?.currentTarget?.dataset?.id || ''; const item = (this.data.accounts as AccountEntry[]).find((entry) => entry.id === id); this.setData({ accountEditingId: id, accountForm: { type: item?.type || 'expense', amount: item ? String(item.amount) : '', categoryIndex: item ? this.data.accountCategories.indexOf(item.category) : 0, date: item?.date || this.data.todayKey, note: item?.note || '' }, accountingVisible: true }) },
+  closeAccount() { this.setData({ accountingVisible: false }) },
+  onAccountInput(event: any) { const field = String(event.currentTarget.dataset.field); this.setData({ [`accountForm.${field}`]: event.detail.value }) },
+  onAccountTypeChange(event: any) { this.setData({ 'accountForm.type': event.detail.value === '1' ? 'income' : 'expense' }) },
+  onAccountCategoryChange(event: any) { this.setData({ 'accountForm.categoryIndex': Number(event.detail.value) }) },
+  onAccountDateChange(event: any) { this.setData({ 'accountForm.date': event.detail.value }) },
+  saveAccount() { const form = this.data.accountForm; const amount = Number(form.amount); if (!(amount > 0)) { wx.showToast({ title: '请输入金额', icon: 'none' }); return } const item: AccountEntry = { id: this.data.accountEditingId || makeId('account'), type: form.type as 'income' | 'expense', amount, category: this.data.accountCategories[Number(form.categoryIndex)], date: form.date || this.data.todayKey, note: String(form.note || '').trim() }; const accounts = [...(this.data.accounts as AccountEntry[]).filter((entry) => entry.id !== item.id), item]; this.setData({ accounts, accountingVisible: false }); this.persist(); this.refreshView(); wx.showToast({ title: '已保存', icon: 'success' }) },
+  deleteAccount() { if (!this.data.accountEditingId) return; wx.showModal({ title: '删除账目', content: '确定删除这笔记录吗？', confirmColor: '#c9573e', success: (r) => { if (!r.confirm) return; this.setData({ accounts: (this.data.accounts as AccountEntry[]).filter((item) => item.id !== this.data.accountEditingId), accountingVisible: false }); this.persist(); this.refreshView() } }) }
 })

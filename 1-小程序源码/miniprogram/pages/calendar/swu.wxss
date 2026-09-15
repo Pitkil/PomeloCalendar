@@ -217,7 +217,7 @@
 
 .mode-switch {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 8rpx;
 }
 
@@ -246,6 +246,25 @@
 .focus-card {
   padding: 28rpx;
 }
+
+.accounting-card { padding: 28rpx; }
+.money-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12rpx; margin-bottom: 22rpx; }
+.money-row > view { padding: 18rpx 12rpx; border-radius: 18rpx; background: rgba(23,107,85,.06); text-align: center; }
+.money { display: block; margin-top: 8rpx; color: var(--ink); font-family: Georgia,serif; font-size: 30rpx; font-weight: 800; }
+.money.expense { color: var(--tomato); }
+.money.income { color: var(--accent); }
+.category-stat { margin-bottom: 14rpx; }
+.category-stat > view:first-child { display: flex; justify-content: space-between; color: var(--ink); font-size: 22rpx; }
+.stat-bar { height: 8rpx; margin-top: 7rpx; border-radius: 99rpx; background: rgba(201,87,62,.1); overflow: hidden; }
+.stat-bar view { height: 100%; border-radius: inherit; background: var(--tomato); }
+.ledger-row { display: grid; grid-template-columns: 44rpx 1fr auto; gap: 14rpx; align-items: center; padding: 16rpx 4rpx; border-bottom: 1rpx dashed rgba(23,60,52,.14); }
+.ledger-mark { display: flex; align-items: center; justify-content: center; width: 40rpx; height: 40rpx; border-radius: 12rpx; font-weight: 900; }
+.ledger-mark.expense { color: var(--tomato); background: rgba(201,87,62,.12); }
+.ledger-mark.income { color: var(--accent); background: rgba(23,107,85,.12); }
+.ledger-amount { font-family: Georgia,serif; font-size: 24rpx; font-weight: 700; }
+.ledger-amount.expense { color: var(--tomato); }
+.ledger-amount.income { color: var(--accent); }
+.import-textarea { width: 100%; min-height: 150rpx; margin-bottom: 16rpx; padding: 20rpx; border: 1rpx solid #dce1da; border-radius: 18rpx; background: white; box-sizing: border-box; font-size: 24rpx; }
 
 .compact-result {
   display: flex;
@@ -594,6 +613,7 @@
   font-size: 22rpx;
   text-align: center;
 }
+.week-more { padding: 8rpx 0; color: var(--accent); font-size: 18rpx; font-weight: 800; text-align: center; }
 
 .focus-card {
   overflow: hidden;
@@ -898,6 +918,8 @@
     height: 60rpx;
   }
 }
+
+@media (max-width: 520px) { .money-row { grid-template-columns: 1fr; } }
 
 .privacy-tip {
   margin: 8rpx 0 18rpx;

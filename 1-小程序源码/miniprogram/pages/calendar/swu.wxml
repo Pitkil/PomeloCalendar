@@ -44,6 +44,7 @@
       <view class="mode {{viewMode === 'month' ? 'active' : ''}}" data-mode="month" bindtap="switchView">月历</view>
       <view class="mode {{viewMode === 'week' ? 'active' : ''}}" data-mode="week" bindtap="switchView">周课表</view>
       <view class="mode {{viewMode === 'focus' ? 'active tomato-active' : ''}}" data-mode="focus" bindtap="switchView">番茄钟</view>
+      <view class="mode {{viewMode === 'accounting' ? 'active' : ''}}" data-mode="accounting" bindtap="switchView">记账</view>
     </view>
 
     <view wx:if="{{viewMode === 'month'}}" class="calendar paper-card">
@@ -99,6 +100,7 @@
               <text class="mini-title">{{item.title}}</text>
               <text class="mini-place">{{item.location}}</text>
             </view>
+            <view wx:if="{{item.moreCount}}" class="week-more">+{{item.moreCount}} 门课程</view>
           </view>
         </view>
       </scroll-view>
@@ -122,6 +124,14 @@
         <view class="primary-button tomato-button" bindtap="toggleTimer" role="button">{{focus.running ? '暂停' : '开始专注'}}</view>
       </view>
       <view class="focus-note">完成后会自动生成一条专注记录，出现在今天的日历中。</view>
+    </view>
+
+    <view wx:if="{{viewMode === 'accounting'}}" class="accounting-card paper-card">
+      <view class="section-heading"><view><text class="month-title">校园记账</text><text class="muted small">本月收支一目了然</text></view><view class="add-inline" bindtap="openAccount">＋ 记一笔</view></view>
+      <view class="money-row"><view><text class="muted small">支出</text><text class="money expense">{{monthExpense}}</text></view><view><text class="muted small">收入</text><text class="money income">{{monthIncome}}</text></view><view><text class="muted small">结余</text><text class="money">{{monthBalance}}</text></view></view>
+      <view class="category-stat-list"><view wx:for="{{categoryStats}}" wx:key="name" class="category-stat"><view><text>{{item.name}}</text><text>¥{{item.amount}}</text></view><view class="stat-bar"><view style="width:{{item.percent}}%"></view></view></view></view>
+      <view wx:if="{{!categoryStats.length && !monthAccounts.length}}" class="empty-state"><view class="empty-title">还没有账目</view><view class="muted">点击“记一笔”开始记录。</view></view>
+      <view wx:for="{{monthAccounts}}" wx:key="id" class="ledger-row" data-id="{{item.id}}" bindtap="openAccount"><view class="ledger-mark {{item.type}}">{{item.type === 'income' ? '↑' : '↓'}}</view><view><text>{{item.category}}</text><text class="muted small">{{item.date}}{{item.note ? ' · ' + item.note : ''}}</text></view><text class="ledger-amount {{item.type}}">{{item.type === 'income' ? '+' : '-'}}¥{{item.amount}}</text></view>
     </view>
 
     <view wx:if="{{viewMode !== 'focus'}}" class="agenda paper-card">
@@ -155,7 +165,7 @@
       </view>
     </view>
 
-    <view class="footer-note">{{syncStatus}} · 数据仅保存在本机，密码不会持久化</view>
+    <view class="footer-note">{{syncStatus}} · 课表、日程与账目仅保存在本机</view>
   </view>
 
   <view wx:if="{{viewMode !== 'focus'}}" class="fab" bindtap="openAdd" role="button" aria-label="新增日程">＋</view>
@@ -174,6 +184,7 @@
         <label class="field"><text>结束</text><picker mode="time" value="{{form.endTime}}" bindchange="onEndTimeChange"><view class="picker-field">{{form.endTime}}</view></picker></label>
       </view>
       <label class="field"><text>地点</text><input value="{{form.location}}" data-field="location" bindinput="onFormInput" placeholder="教室、图书馆或线上" /></label>
+      <label class="field"><text>教师（可选）</text><input value="{{form.teacher}}" data-field="teacher" bindinput="onFormInput" placeholder="例如：张老师" /></label>
       <label class="field"><text>备注</text><textarea value="{{form.notes}}" data-field="notes" bindinput="onFormInput" placeholder="补充说明、待办事项……" /></label>
       <view class="sheet-actions">
         <view wx:if="{{editingId}}" class="danger-button" bindtap="deleteEvent" role="button">删除</view>
@@ -197,14 +208,14 @@
         <label class="field"><text>专注</text><input type="number" value="{{settings.focusMinutes}}" data-field="focusMinutes" bindinput="onSettingsInput" /></label>
         <label class="field"><text>休息</text><input type="number" value="{{settings.breakMinutes}}" data-field="breakMinutes" bindinput="onSettingsInput" /></label>
       </view>
+      <view class="privacy-tip">专注和休息时长可以分别自定义，保存后计时器立即按新时长重置。</view>
       <view class="two-fields">
         <label class="field"><text>主题色</text><picker range="{{accentOptions}}" range-key="name" bindchange="onAccentChange"><view class="picker-field">点击选择</view></picker></label>
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
       </view>
       <label class="field"><text>卡片透明度（70-100）</text><input type="number" value="{{settings.cardOpacity}}" data-field="cardOpacity" bindinput="onSettingsInput" /></label>
       <view class="upload-button" bindtap="chooseWallpaper" role="button">＋ 从相册选择自定义壁纸</view>
-      <label class="field"><text>网页版 / 备用 HTTPS 后端地址（可选）</text><input value="{{settings.backendUrl}}" data-field="backendUrl" bindinput="onSettingsInput" placeholder="https://your-service.example.com" /></label>
-      <view class="privacy-tip">教务账号密码只用于当次同步，不会写入本地缓存。</view>
+      <view class="privacy-tip">课表通过文件导入，所有日历与账目数据仅保存在本机。</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSettings" role="button">取消</view><view class="primary-button" bindtap="saveSettings" role="button">保存设置</view></view>
     </scroll-view>
   </view>
@@ -212,16 +223,15 @@
   <view wx:if="{{syncVisible}}" class="modal-mask" bindtap="closeSync">
     <view class="bottom-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
-      <view class="sheet-title">同步西大课表</view>
-      <view class="privacy-tip strong">课表将通过本小程序的云托管服务连接西南大学官方统一认证和教务系统。密码只用于本次登录，不保存、不写日志。</view>
-      <label class="field"><text>学号</text><input value="{{syncForm.username}}" data-field="username" bindinput="onSyncInput" placeholder="请输入学号" /></label>
-      <label class="field"><text>统一认证密码</text><input password="true" value="{{syncForm.password}}" data-field="password" bindinput="onSyncInput" placeholder="仅用于本次同步" /></label>
-      <view class="two-fields">
-        <label class="field"><text>学年起始年</text><input type="number" value="{{syncForm.year}}" data-field="year" bindinput="onSyncInput" /></label>
-        <label class="field"><text>学期</text><input type="number" value="{{syncForm.term}}" data-field="term" bindinput="onSyncInput" /></label>
-      </view>
+      <view class="sheet-title">导入课表</view>
+      <view class="privacy-tip strong">先打开西大办事大厅，进入“教务系统/我的课表”并导出 PDF。小程序请用 WPS 复制 PDF 表格后粘贴，或另存为 CSV 再选择文件；解析完全在本机完成。</view>
+      <view class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 选择 PDF / CSV / JSON / TXT 课表文件</view>
+      <textarea class="import-textarea" placeholder="也可以粘贴表格文本：课程名称,教师,星期,节次,周次,教室" data-field="scheduleText" bindinput="onScheduleTextInput"></textarea>
+      <view class="manual-login-link" bindtap="openJw" role="button">↗ 复制办事大厅网址</view>
       <view class="upload-button" bindtap="importDemoCourses" role="button">先导入示例课表体验</view>
-      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view><view class="primary-button" bindtap="syncCourses" role="button">安全同步</view></view>
+      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view><view class="primary-button" bindtap="importPastedSchedule" role="button">导入到日历</view></view>
     </view>
   </view>
+
+  <view wx:if="{{accountingVisible}}" class="modal-mask" bindtap="closeAccount"><view class="bottom-sheet" catchtap="noop"><view class="sheet-handle"></view><view class="sheet-title">{{accountEditingId ? '编辑账目' : '记一笔'}}</view><view class="two-fields"><label class="field"><text>类型</text><picker range="{{accountTypeOptions}}" bindchange="onAccountTypeChange"><view class="picker-field">{{accountForm.type === 'income' ? '收入' : '支出'}}</view></picker></label><label class="field"><text>金额</text><input type="digit" value="{{accountForm.amount}}" data-field="amount" bindinput="onAccountInput" placeholder="0.00" /></label></view><view class="two-fields"><label class="field"><text>分类</text><picker range="{{accountCategories}}" value="{{accountForm.categoryIndex}}" bindchange="onAccountCategoryChange"><view class="picker-field">{{accountCategories[accountForm.categoryIndex]}}</view></picker></label><label class="field"><text>日期</text><picker mode="date" value="{{accountForm.date}}" bindchange="onAccountDateChange"><view class="picker-field">{{accountForm.date}}</view></picker></label></view><label class="field"><text>备注</text><input value="{{accountForm.note}}" data-field="note" bindinput="onAccountInput" placeholder="例如：食堂午餐" /></label><view class="sheet-actions"><view wx:if="{{accountEditingId}}" class="danger-button" bindtap="deleteAccount">删除</view><view class="secondary-button" bindtap="closeAccount">取消</view><view class="primary-button" bindtap="saveAccount">保存</view></view></view></view>
 </view>

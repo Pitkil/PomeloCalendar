@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg"><defs><style>symbol{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}</style></defs>
+<symbol id="calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M7 2v4M17 2v4M3 9h18M7 13h3M7 17h3M14 13h3"/></symbol>
+<symbol id="import" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 19h14"/></symbol>
+<symbol id="tomato" viewBox="0 0 24 24"><path d="M12 7c-4.3 0-7 3.1-7 7.1S7.7 21 12 21s7-2.9 7-6.9S16.3 7 12 7Z"/><path d="M12 7c0-2 1.4-3.3 3.4-4M12 7C11 5 9.5 4.5 8 4.7"/></symbol>
+<symbol id="wallet" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4H19a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6.5A2.5 2.5 0 0 1 4 17.5Z"/><path d="M4 7h15M15 13h5M16 13v2"/></symbol>
+<symbol id="settings" viewBox="0 0 24 24"><path d="m12 3 1.3 2.2 2.5.6.6 2.5L18.6 9 18 11.5l1.6 2-1.6 2 .6 2.5-2.2.7-1.1 2.2-2.5-.7-1.3 2-1.3-2-2.5.7-1.1-2.2-2.2-.7.6-2.5-1.6-2 1.6-2-.6-2.5 2.2-.7L8.7 5l2.5.6Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="wallpaper" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.2"/><path d="m4 17 5-5 3 3 2-2 6 5"/></symbol>
+</svg>
