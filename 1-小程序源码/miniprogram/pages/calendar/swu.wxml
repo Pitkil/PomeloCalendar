@@ -118,6 +118,7 @@
         <view class="focus-chip {{focus.mode === 'focus' ? 'active' : ''}}" data-mode="focus" bindtap="switchFocusMode">专注 {{settings.focusMinutes}} 分钟</view>
         <view class="focus-chip {{focus.mode === 'break' ? 'active' : ''}}" data-mode="break" bindtap="switchFocusMode">休息 {{settings.breakMinutes}} 分钟</view>
       </view>
+      <view class="focus-duration-row"><label>专注<input type="number" value="{{settings.focusMinutes}}" data-kind="focus" bindchange="onFocusDurationChange" />分钟</label><label>休息<input type="number" value="{{settings.breakMinutes}}" data-kind="break" bindchange="onFocusDurationChange" />分钟</label></view>
       <input class="focus-task" value="{{focus.taskTitle}}" bindinput="onFocusTaskInput" placeholder="这次想专注完成什么？" />
       <view class="focus-actions">
         <view class="secondary-button" bindtap="resetTimer" role="button">重置</view>
@@ -203,17 +204,13 @@
         <label class="field"><text>学期开始</text><picker mode="date" value="{{settings.semesterStart}}" bindchange="onSemesterStartChange"><view class="picker-field">{{settings.semesterStart}}</view></picker></label>
         <label class="field"><text>学期结束</text><picker mode="date" value="{{settings.semesterEnd}}" bindchange="onSemesterEndChange"><view class="picker-field">{{settings.semesterEnd}}</view></picker></label>
       </view>
-      <view class="three-fields">
-        <label class="field"><text>教学周</text><input type="number" value="{{settings.totalWeeks}}" data-field="totalWeeks" bindinput="onSettingsInput" /></label>
-        <label class="field"><text>专注</text><input type="number" value="{{settings.focusMinutes}}" data-field="focusMinutes" bindinput="onSettingsInput" /></label>
-        <label class="field"><text>休息</text><input type="number" value="{{settings.breakMinutes}}" data-field="breakMinutes" bindinput="onSettingsInput" /></label>
-      </view>
-      <view class="privacy-tip">专注和休息时长可以分别自定义，保存后计时器立即按新时长重置。</view>
+      <label class="field"><text>教学周</text><input type="number" value="{{settings.totalWeeks}}" data-field="totalWeeks" bindinput="onSettingsInput" /></label>
       <view class="two-fields">
         <label class="field"><text>主题色</text><picker range="{{accentOptions}}" range-key="name" bindchange="onAccentChange"><view class="picker-field">点击选择</view></picker></label>
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
       </view>
       <label class="field"><text>卡片透明度（70-100）</text><input type="number" value="{{settings.cardOpacity}}" data-field="cardOpacity" bindinput="onSettingsInput" /></label>
+      <label class="field"><text>智能课表解析服务地址</text><input value="{{settings.aiServiceUrl}}" data-field="aiServiceUrl" bindinput="onSettingsInput" placeholder="https://.../api/schedule/parse" /></label>
       <view class="upload-button" bindtap="chooseWallpaper" role="button">＋ 从相册选择自定义壁纸</view>
       <view class="privacy-tip">课表通过文件导入，所有日历与账目数据仅保存在本机。</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSettings" role="button">取消</view><view class="primary-button" bindtap="saveSettings" role="button">保存设置</view></view>
@@ -224,12 +221,10 @@
     <view class="bottom-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
       <view class="sheet-title">导入课表</view>
-      <view class="privacy-tip strong">先打开西大办事大厅，进入“教务系统/我的课表”并导出 PDF。小程序请用 WPS 复制 PDF 表格后粘贴，或另存为 CSV 再选择文件；解析完全在本机完成。</view>
-      <view class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 选择 PDF / CSV / JSON / TXT 课表文件</view>
-      <textarea class="import-textarea" placeholder="也可以粘贴表格文本：课程名称,教师,星期,节次,周次,教室" data-field="scheduleText" bindinput="onScheduleTextInput"></textarea>
+      <view class="privacy-tip strong">先打开西大办事大厅，进入“教务系统/我的课表”并导出 PDF。上传后由智能解析服务调用大模型整理课程信息。</view>
+      <view class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 选择 PDF 课表文件</view>
       <view class="manual-login-link" bindtap="openJw" role="button">↗ 复制办事大厅网址</view>
-      <view class="upload-button" bindtap="importDemoCourses" role="button">先导入示例课表体验</view>
-      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view><view class="primary-button" bindtap="importPastedSchedule" role="button">导入到日历</view></view>
+      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view></view>
     </view>
   </view>
 

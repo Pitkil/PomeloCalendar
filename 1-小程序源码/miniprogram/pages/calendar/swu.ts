@@ -26,6 +26,7 @@ interface Settings {
   wallpaper: string
   customWallpaper: string
   cardOpacity: number
+  aiServiceUrl: string
 }
 
 interface AccountEntry { id: string; type: 'expense' | 'income'; amount: number; category: string; date: string; note: string }
@@ -87,7 +88,8 @@ const defaultSettings = (): Settings => {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    cardOpacity: 94
+    cardOpacity: 94,
+    aiServiceUrl: 'http://127.0.0.1:8788/api/schedule/parse'
   }
 }
 
@@ -205,7 +207,6 @@ Page({
     editorVisible: false,
     settingsVisible: false,
     syncVisible: false,
-    scheduleText: '',
     accountingVisible: false,
     editingId: '',
     categories: ['学习', '课程', '考试', '作业', '活动', '生活'],
@@ -580,6 +581,7 @@ Page({
       focusMinutes: Math.max(1, Number(this.data.settings.focusMinutes || 25)),
       breakMinutes: Math.max(1, Number(this.data.settings.breakMinutes || 5)),
       cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94))),
+      aiServiceUrl: String(this.data.settings.aiServiceUrl || '').replace(/\/$/, '')
     }
     const seconds = settings.focusMinutes * 60
     this.setData({
@@ -596,6 +598,17 @@ Page({
   },
 
   onFocusTaskInput(event: any) { this.setData({ 'focus.taskTitle': event.detail.value }) },
+
+  onFocusDurationChange(event: any) {
+    const kind = String(event.currentTarget.dataset.kind)
+    const max = kind === 'focus' ? 180 : 60
+    const minutes = Math.max(1, Math.min(max, Number(event.detail.value) || (kind === 'focus' ? 25 : 5)))
+    const field = kind === 'focus' ? 'focusMinutes' : 'breakMinutes'
+    this.setData({ [`settings.${field}`]: minutes })
+    this.persist()
+    this.resetTimer()
+    wx.showToast({ title: `${kind === 'focus' ? '专注' : '休息'}时长已更新`, icon: 'none' })
+  },
 
   toggleTimer() {
     if (this.data.focus.running) {
@@ -665,55 +678,31 @@ Page({
   },
 
   openSync() { this.setData({ syncVisible: true }) },
-  closeSync() { this.setData({ syncVisible: false, scheduleText: '' }) },
+  closeSync() { this.setData({ syncVisible: false }) },
   openJw() { wx.setClipboardData({ data: 'https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/' }); wx.showToast({ title: '办事大厅网址已复制', icon: 'none' }) },
-  onScheduleTextInput(event: any) { this.setData({ scheduleText: event.detail.value }) },
-  importPastedSchedule() { if (!String(this.data.scheduleText || '').trim()) { wx.showToast({ title: '请先粘贴课表', icon: 'none' }); return } this.importScheduleText(this.data.scheduleText) },
 
   chooseScheduleFile() {
     wx.chooseMessageFile({ count: 1, type: 'file', success: (result) => {
       const file = result.tempFiles[0]
-      if (/\.pdf$/i.test(file.name || file.path)) {
-        wx.showModal({ title: 'PDF 课表导入', content: '小程序端无法直接读取 PDF 表格文字。请在电脑网页版选择 PDF 自动提取，或用 WPS 打开 PDF 后复制表格，再粘贴到这里。', showCancel: false })
-        return
-      }
-      wx.getFileSystemManager().readFile({ filePath: file.path, encoding: 'utf8', success: (res) => {
-        this.importScheduleText(String(res.data))
-      }, fail: () => wx.showToast({ title: '文件读取失败', icon: 'none' }) })
+      if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
+      const url = String(this.data.settings.aiServiceUrl || '')
+      if (!url) { wx.showModal({ title: '缺少服务地址', content: '请在日历设置中填写智能课表解析服务地址。', showCancel: false }); return }
+      wx.showLoading({ title: '模型解析中' })
+      wx.uploadFile({
+        url, filePath: file.path, name: 'schedule',
+        success: (response) => {
+          try {
+            const body = JSON.parse(response.data || '{}')
+            if (response.statusCode < 200 || response.statusCode >= 300 || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body.error || '模型未返回有效课程')
+            this.replaceRemoteCourses(body.courses)
+            this.setData({ syncVisible: false, syncStatus: `智能导入 ${body.courses.length} 门课程` })
+            wx.showToast({ title: `导入 ${body.courses.length} 门课程`, icon: 'success' })
+          } catch (error) { wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '服务返回异常', showCancel: false }) }
+        },
+        fail: (error) => wx.showModal({ title: '无法连接解析服务', content: error.errMsg || '网络请求失败', showCancel: false }),
+        complete: () => wx.hideLoading()
+      })
     } })
-  },
-
-  importScheduleText(raw: string) {
-    try {
-      const text = String(raw || '').replace(/^\uFEFF/, '').trim()
-      let list: any[] = []
-      try { const parsed = JSON.parse(text); list = Array.isArray(parsed) ? parsed : (parsed.courses || parsed.schedule || parsed.res || []) } catch { /* delimited text */ }
-      if (!list.length) {
-        const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-        if (lines.length < 2) throw new Error('请提供 JSON、CSV 或制表符文本')
-        const delimiter = lines[0].includes('\t') ? '\t' : ','
-        const headers = lines[0].split(delimiter).map((v) => v.trim().toLowerCase())
-        const find = (names: string[]) => headers.findIndex((h) => names.some((name) => h === name || h.includes(name)))
-        const idx = { title: find(['课程名称', '课程', 'title', 'kcmc']), teacher: find(['教师', '老师', 'teacher', 'xm']), weekday: find(['星期', '周几', 'weekday', 'xqj']), sessions: find(['节次', 'sessions', 'jc']), weeks: find(['周次', 'weeks', 'zcd']), place: find(['教室', '地点', 'place', 'cdmc']) }
-        if (idx.title < 0 || idx.weekday < 0) throw new Error('表头需要包含课程名称和星期')
-        list = lines.slice(1).map((line) => { const cells = line.split(delimiter).map((v) => v.trim()); const day = Number(cells[idx.weekday]); return { title: cells[idx.title], teacher: idx.teacher >= 0 ? cells[idx.teacher] : '', weekday: day || 1, sessions: idx.sessions >= 0 ? cells[idx.sessions] : '1-2节', weeks: idx.weeks >= 0 ? cells[idx.weeks] : '', place: idx.place >= 0 ? cells[idx.place] : '' } })
-      }
-      const courses = list.map((item) => ({ ...item, title: item.title || item.kcmc })).filter((item) => item.title)
-      if (!courses.length) throw new Error('没有识别到有效课程')
-      this.replaceRemoteCourses(courses)
-      this.setData({ syncVisible: false, syncStatus: `已导入 ${courses.length} 门课程` })
-      wx.showToast({ title: `导入 ${courses.length} 门课程`, icon: 'success' })
-    } catch (error) { wx.showModal({ title: '导入失败', content: error instanceof Error ? error.message : '课表格式不正确', showCancel: false }) }
-  },
-
-  importDemoCourses() {
-    const demo: CourseLike[] = [
-      { id: 'se', title: '软件工程', teacher: '张老师', place: '第八教学楼 105', weekday: 1, sessions: '1-2节', weeks: '1-16周' },
-      { id: 'ai', title: '人工智能导论', teacher: '李老师', place: '第十教学楼 204', weekday: 3, sessions: '5-6节', weeks: '1-16周(单)' },
-      { id: 'pe', title: '体育', teacher: '王老师', place: '第一运动场', weekday: 5, sessions: '3-4节', weeks: '2-16周(双)' }
-    ]
-    this.replaceRemoteCourses(demo)
-    this.setData({ syncStatus: '已导入示例课表', syncVisible: false })
   },
 
   replaceRemoteCourses(courses: CourseLike[]) {

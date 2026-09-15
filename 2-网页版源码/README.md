@@ -2,6 +2,6 @@
 
 直接打开 `index.html` 或运行 `python -m http.server 8080`。
 
-功能：月历/周课表、课表文件导入（JSON/CSV/TXT/制表符）、导入后课程编辑、日程管理、校园记账、可自定义番茄钟、壁纸主题、本地备份与 ICS 导出。
+课表流程：办事大厅 → 教务系统 → 我的课表 → 导出 PDF → 上传。网页将 PDF 发送给智能解析服务，由大模型返回标准课程 JSON；不保留 CSV、JSON、文本或规则解析兜底。
 
-课表导入：先打开 [西大办事大厅](https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/)，进入“教务系统/我的课表”并导出 PDF；在页面右上角“⇩”选择 PDF，系统会先提取文字并放入编辑框供检查。也支持 CSV、JSON、TXT 或直接粘贴表格文本。所有解析在浏览器本机完成，不需要账号密码，也不会上传数据。
+先部署 `../3-智能课表解析服务`，然后在“日历设置”填入完整接口地址，例如 `https://your-service.example.com/api/schedule/parse`。API 密钥只应保存在服务端 `.env`。

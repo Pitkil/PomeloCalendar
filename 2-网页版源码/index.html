@@ -97,6 +97,10 @@
               <button class="active" data-focus-mode="focus">专注 <span id="focusLengthLabel">25</span> 分钟</button>
               <button data-focus-mode="break">休息 <span id="breakLengthLabel">5</span> 分钟</button>
             </div>
+            <div class="focus-duration-controls" aria-label="番茄钟时长设置">
+              <label>专注 <input id="focusDurationFocus" type="number" min="1" max="180" value="25"> 分钟</label>
+              <label>休息 <input id="focusDurationBreak" type="number" min="1" max="60" value="5"> 分钟</label>
+            </div>
           </div>
           <div class="timer-wrap">
             <div class="timer-ring" id="timerRing">
@@ -161,8 +165,9 @@
       <div class="dialog-top"><div><span class="micro-label">PERSONALIZE</span><h2>日历设置</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
       <div class="settings-columns">
         <section><h3>学期</h3><label class="field"><span>学期名称</span><input id="settingSemesterTitle"></label><div class="field-grid"><label class="field"><span>开始日期</span><input id="settingSemesterStart" type="date"></label><label class="field"><span>结束日期</span><input id="settingSemesterEnd" type="date"></label></div><label class="field"><span>教学周数</span><input id="settingTotalWeeks" type="number" min="1" max="30"></label></section>
-        <section><h3>专注</h3><div class="field-grid"><label class="field"><span>专注分钟</span><input id="settingFocusMinutes" type="number" min="1" max="180"></label><label class="field"><span>休息分钟</span><input id="settingBreakMinutes" type="number" min="1" max="60"></label></div><h3>外观</h3><label class="field"><span>主题色</span><select id="settingAccent"><option value="#176b55">校历绿</option><option value="#316b83">湖水蓝</option><option value="#c9573e">番茄红</option><option value="#a87919">银杏金</option></select></label><label class="field"><span>预设壁纸</span><select id="settingWallpaper"><option value="paper">暖白纸张</option><option value="lake">缙云晨雾</option><option value="ginkgo">银杏午后</option><option value="night">暮色自习</option></select></label><label class="field"><span>卡片透明度</span><input id="settingOpacity" type="range" min="72" max="100"></label><label class="wallpaper-upload"><input id="wallpaperFile" type="file" accept="image/*"><span>＋ 上传自定义壁纸</span></label></section>
+        <section><h3>外观</h3><label class="field"><span>主题色</span><select id="settingAccent"><option value="#176b55">校历绿</option><option value="#316b83">湖水蓝</option><option value="#c9573e">番茄红</option><option value="#a87919">银杏金</option></select></label><label class="field"><span>预设壁纸</span><select id="settingWallpaper"><option value="paper">暖白纸张</option><option value="lake">缙云晨雾</option><option value="ginkgo">银杏午后</option><option value="night">暮色自习</option></select></label><label class="field"><span>卡片透明度</span><input id="settingOpacity" type="range" min="72" max="100"></label><label class="wallpaper-upload"><input id="wallpaperFile" type="file" accept="image/*"><span>＋ 上传自定义壁纸</span></label></section>
       </div>
+      <label class="field full"><span>智能课表解析服务地址</span><input id="settingAiServiceUrl" type="url" placeholder="https://your-service.example.com/api/schedule/parse"></label>
       <div class="utility-row"><button type="button" class="quiet-button" id="exportIcs">导出 ICS 日历</button><button type="button" class="quiet-button" id="exportBackup">备份 JSON</button></div>
       <p class="privacy-note">所有数据仅保存在本机。课表通过文件导入，不需要在本应用填写西大账号密码。</p>
       <div class="dialog-actions"><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">保存设置</button></div>
@@ -172,17 +177,16 @@
   <dialog id="syncDialog" class="sheet-dialog">
     <form method="dialog" id="syncForm">
       <div class="dialog-top"><div><span class="micro-label">COURSE IMPORT</span><h2>导入课表</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
-      <div class="import-guide"><strong>从办事大厅进入教务系统</strong><span>① 打开办事大厅　② 点击“教务系统/我的课表”　③ 导出 PDF　④ 在这里选择 PDF，检查识别结果后导入</span><a class="manual-login-link" href="https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/" target="_blank" rel="noreferrer">↗ 打开西大办事大厅</a></div>
-      <details class="manual-import" id="manualImportPanel" open>
-        <summary>选择课表文件或粘贴表格</summary>
+      <div class="import-guide"><strong>大模型智能解析 PDF</strong><span>① 打开办事大厅　② 进入“教务系统/我的课表”　③ 导出 PDF　④ 上传 PDF，等待模型整理为课程</span><a class="manual-login-link" href="https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/" target="_blank" rel="noreferrer">↗ 打开西大办事大厅</a></div>
+      <details class="manual-import" id="pdfImportPanel" open>
+        <summary>上传教务系统导出的 PDF</summary>
         <div class="manual-import-body">
-          <p>支持 PDF、JSON、CSV、TXT 和制表符文本。PDF 会先提取文字并放入下方编辑框，你可以检查或补充字段后再导入。解析在本机完成，不会上传。</p>
-          <label class="wallpaper-upload import-upload"><input id="scheduleFile" type="file" accept=".pdf,.json,.csv,.txt,application/pdf,application/json,text/csv,text/plain"><span>＋ 选择 PDF / JSON / CSV / 文本课表</span></label>
-          <label class="field full"><span>粘贴课表（支持 JSON、CSV 或制表符文本）</span><textarea id="schedulePaste" rows="5" placeholder="课程名称,教师,星期,节次,周次,教室\n软件工程,张老师,1,1-2,1-16,八教105"></textarea></label>
-          <button type="button" class="primary-button import-button" id="manualImport">导入到日历</button>
+          <p>仅支持 PDF。文件上传到你的智能解析服务，由大模型识别课程名、教师、星期、节次、周次和教室后导入。</p>
+          <label class="wallpaper-upload import-upload"><input id="scheduleFile" type="file" accept=".pdf,application/pdf"><span>＋ 选择 PDF 课表</span></label>
+          <p class="import-file-name" id="scheduleFileName">尚未选择文件</p>
         </div>
       </details>
-      <div class="dialog-actions split"><button type="button" class="quiet-button" id="importDemo">导入示例课表</button><div><button value="cancel" class="quiet-button">取消</button><button type="button" class="primary-button" id="manualImportFooter">导入到日历</button></div></div>
+      <div class="dialog-actions"><button value="cancel" class="quiet-button">取消</button><button type="button" class="primary-button" id="aiImport">智能解析并导入</button></div>
     </form>
   </dialog>
 

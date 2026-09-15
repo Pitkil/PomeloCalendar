@@ -32,12 +32,14 @@ function defaultSettings() {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    opacity: 94
+    opacity: 94,
+    aiServiceUrl: 'http://127.0.0.1:8788/api/schedule/parse'
   };
 }
 
 const today = toDateKey(new Date());
 const settings = { ...defaultSettings(), ...loadJson(STORAGE_SETTINGS, {}) };
+if (!settings.aiServiceUrl) settings.aiServiceUrl = defaultSettings().aiServiceUrl;
 const initialEvents = [{
   id: uid('welcome'), title: '完成校园日历实验', date: today, startTime: '19:00', endTime: '20:30',
   category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal', completed: false
@@ -54,6 +56,7 @@ const state = {
   query: '',
   editingId: '',
   editingAccountId: '',
+  importFile: null,
   timer: {
     mode: 'focus',
     running: false,
@@ -244,9 +247,21 @@ function renderTimer() {
   $('roundDisplay').textContent = `今日第 ${timer.rounds + 1} 轮`;
   $('focusLengthLabel').textContent = state.settings.focusMinutes;
   $('breakLengthLabel').textContent = state.settings.breakMinutes;
+  $('focusDurationFocus').value = state.settings.focusMinutes;
+  $('focusDurationBreak').value = state.settings.breakMinutes;
   document.querySelectorAll('[data-focus-mode]').forEach((button) => button.classList.toggle('active', button.dataset.focusMode === timer.mode));
   const progress = timer.duration ? (1 - timer.left / timer.duration) * 360 : 0;
   $('timerRing').style.setProperty('--progress', `${progress}deg`);
+}
+
+function updateFocusDuration(kind, value) {
+  const max = kind === 'focus' ? 180 : 60;
+  const minutes = Math.max(1, Math.min(max, Number(value) || (kind === 'focus' ? 25 : 5)));
+  state.settings[kind === 'focus' ? 'focusMinutes' : 'breakMinutes'] = minutes;
+  save();
+  resetTimer(state.timer.mode);
+  renderAll();
+  showToast(`${kind === 'focus' ? '专注' : '休息'}时长已设为 ${minutes} 分钟`);
 }
 
 function renderAll() {
@@ -340,11 +355,10 @@ function openSettings() {
   $('settingSemesterStart').value = state.settings.semesterStart;
   $('settingSemesterEnd').value = state.settings.semesterEnd;
   $('settingTotalWeeks').value = state.settings.totalWeeks;
-  $('settingFocusMinutes').value = state.settings.focusMinutes;
-  $('settingBreakMinutes').value = state.settings.breakMinutes;
   $('settingAccent').value = state.settings.accent;
   $('settingWallpaper').value = state.settings.wallpaper === 'custom' ? 'paper' : state.settings.wallpaper;
   $('settingOpacity').value = state.settings.opacity;
+  $('settingAiServiceUrl').value = state.settings.aiServiceUrl || '';
   $('settingsDialog').showModal();
 }
 
@@ -355,11 +369,10 @@ function submitSettings(event) {
     semesterStart: $('settingSemesterStart').value,
     semesterEnd: $('settingSemesterEnd').value,
     totalWeeks: Math.max(1, Number($('settingTotalWeeks').value || 19)),
-    focusMinutes: Math.max(1, Number($('settingFocusMinutes').value || 25)),
-    breakMinutes: Math.max(1, Number($('settingBreakMinutes').value || 5)),
     accent: $('settingAccent').value,
     wallpaper: state.settings.wallpaper === 'custom' && state.settings.customWallpaper ? 'custom' : $('settingWallpaper').value,
-    opacity: Math.max(72, Math.min(100, Number($('settingOpacity').value || 94)))
+    opacity: Math.max(72, Math.min(100, Number($('settingOpacity').value || 94))),
+    aiServiceUrl: $('settingAiServiceUrl').value.trim().replace(/\/$/, '')
   });
   resetTimer(state.timer.mode);
   save();
@@ -415,149 +428,24 @@ function replaceCourses(courses) {
   renderAll();
 }
 
-const demoCourses = [
-  { id: 'se', title: '软件工程', teacher: '张老师', place: '第八教学楼 105', weekday: 1, sessions: '1-2节', weeks: '1-16周' },
-  { id: 'ai', title: '人工智能导论', teacher: '李老师', place: '第十教学楼 204', weekday: 3, sessions: '5-6节', weeks: '1-16周(单)' },
-  { id: 'pe', title: '体育', teacher: '王老师', place: '第一运动场', weekday: 5, sessions: '3-4节', weeks: '2-16周(双)' }
-];
+function openSync() { state.importFile = null; $('scheduleFile').value = ''; $('scheduleFileName').textContent = '尚未选择文件'; $('syncDialog').showModal(); }
 
-function openSync() { $('schedulePaste').value = ''; $('syncDialog').showModal(); }
-
-function splitImportLine(line, delimiter) {
-  const cells = [];
-  let cell = '';
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (char === '"' && line[index + 1] === '"' && quoted) { cell += '"'; index += 1; continue; }
-    if (char === '"') { quoted = !quoted; continue; }
-    if (char === delimiter && !quoted) { cells.push(cell.trim()); cell = ''; continue; }
-    cell += char;
-  }
-  cells.push(cell.trim());
-  return cells;
-}
-
-function importWeekday(value) {
-  const text = String(value ?? '').trim();
-  const match = text.match(/[1-7]/);
-  if (match) return Number(match[0]);
-  return ({ 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 })[text.replace(/^星期?/, '')] || 0;
-}
-
-function normalizeCourse(course = {}) {
-  return {
-    id: course.id || course.course_id || course.kch_id || '',
-    title: course.title || course.kcmc || course.name || '',
-    teacher: course.teacher || course.xm || '',
-    weekday: importWeekday(course.weekday ?? course.xqj ?? course.week ?? 0),
-    sessions: course.sessions || course.jc || course.section || '1-2节',
-    weeks: course.weeks || course.zcd || course.weekList || '',
-    place: course.place || course.cdmc || course.classroom || '',
-    date: course.date || ''
-  };
-}
-
-function importCoursesFromText(raw) {
-  const text = String(raw || '').replace(/^\uFEFF/, '').trim();
-  if (!text) throw new Error('请先选择或粘贴课表内容');
-  const pdfCourses = parsePdfSchedule(text);
-  if (pdfCourses.length) return pdfCourses;
+async function importPdfWithAi() {
+  if (!state.importFile) { showToast('请先选择教务系统导出的 PDF'); return; }
+  if (!state.settings.aiServiceUrl) { showToast('请先在日历设置中填写智能解析服务地址'); return; }
+  const button = $('aiImport');
+  button.disabled = true; button.textContent = '正在由模型解析…';
   try {
-    const parsed = JSON.parse(text);
-    const list = Array.isArray(parsed) ? parsed : (parsed.courses || parsed.kbList || parsed.schedule || parsed.res);
-    if (Array.isArray(list) && list.length) return list.map(normalizeCourse);
-  } catch { /* Not JSON; continue with delimited text. */ }
-
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length < 2) throw new Error('未识别到课表数据，请提供 JSON、CSV 或带表头的表格文本');
-  const delimiter = lines[0].includes('\t') ? '\t' : ',';
-  const header = splitImportLine(lines[0], delimiter).map((item) => item.toLowerCase());
-  const aliases = {
-    title: ['课程名称', '课程', '科目', 'title', 'kcmc'], teacher: ['教师', '老师', 'teacher', 'xm'],
-    weekday: ['星期', '星期几', '周几', 'weekday', 'xqj'], sessions: ['节次', '上课节次', 'sessions', 'jc'],
-    weeks: ['周次', '上课周次', 'weeks', 'zcd'], place: ['教室', '地点', 'place', 'cdmc'], id: ['课程号', '课程代码', 'id', 'kch_id']
-  };
-  const indexOf = (names) => header.findIndex((item) => names.some((name) => item === name || item.includes(name)));
-  const indexes = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, indexOf(names)]));
-  if (indexes.title < 0) throw new Error('表头中未找到“课程名称”列');
-  return lines.slice(1).map((line, index) => {
-    const cells = splitImportLine(line, delimiter);
-    const value = (key) => indexes[key] >= 0 ? cells[indexes[key]] : '';
-    const weekday = importWeekday(value('weekday'));
-    const title = value('title');
-    return title && weekday ? normalizeCourse({ id: value('id') || `manual-${index + 1}`, title, teacher: value('teacher'), weekday, sessions: value('sessions'), weeks: value('weeks'), place: value('place') }) : null;
-  }).filter(Boolean);
-}
-
-function importManualSchedule() {
-  try {
-    const courses = importCoursesFromText($('schedulePaste').value);
-    if (!courses.length) throw new Error('没有识别到有效课程，请检查星期和课程名称');
-    replaceCourses(courses);
-    const status = `手动导入成功 · ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    const formData = new FormData(); formData.append('schedule', state.importFile);
+    const response = await fetch(state.settings.aiServiceUrl, { method: 'POST', body: formData });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body?.error || '模型未返回有效课程');
+    replaceCourses(body.courses);
+    const status = `智能导入成功 · ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
     localStorage.setItem('swu-calendar-sync-status', status);
-    $('syncDialog').close();
-    showToast(`已导入 ${courses.length} 门课程`);
-  } catch (error) {
-    showToast(`导入失败：${error.message}`);
-  }
-}
-
-async function extractPdfText(file) {
-  const pdfjs = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
-  pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
-  const buffer = await file.arrayBuffer();
-  const pdf = await pdfjs.getDocument({ data: buffer }).promise;
-  const pages = [];
-  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
-    const page = await pdf.getPage(pageNo);
-    const content = await page.getTextContent();
-    const rows = [];
-    content.items.forEach((item) => {
-      const y = Math.round(item.transform?.[5] || 0);
-      let row = rows.find((entry) => Math.abs(entry.y - y) <= 3);
-      if (!row) { row = { y, cells: [] }; rows.push(row); }
-      row.cells.push({ x: item.transform?.[4] || 0, text: item.str });
-    });
-    const ordered = rows.sort((a, b) => b.y - a.y);
-    const header = ordered.find((row) => row.cells.some((cell) => /星期一/.test(cell.text)));
-    const dayXs = header ? header.cells.filter((cell) => /^星期[一二三四五六日天]$/.test(cell.text.trim())).sort((a, b) => a.x - b.x).map((cell) => cell.x) : [];
-    pages.push(ordered.map((row) => {
-      const dayCells = Array.from({ length: 7 }, () => []);
-      row.cells.forEach((cell) => {
-        if (!dayXs.length) return;
-        let nearest = 0; let distance = Infinity;
-        dayXs.forEach((x, index) => { const next = Math.abs(cell.x - x); if (next < distance) { nearest = index; distance = next; } });
-        if (distance < 95) dayCells[nearest].push(cell.text);
-      });
-      return dayXs.length ? dayCells.map((cells) => cells.join(' ')).join('\t') : row.cells.sort((a, b) => a.x - b.x).map((cell) => cell.text).join('\t');
-    }).join('\n'));
-  }
-  return pages.join('\n');
-}
-
-function parsePdfSchedule(text) {
-  if (!/时间段|星期一/.test(text)) return [];
-  const pending = Array.from({ length: 7 }, () => null);
-  const result = [];
-  const finish = (day) => { const item = pending[day]; if (!item || !item.sessions) return; result.push(normalizeCourse({ id: `pdf-${day}-${result.length + 1}`, title: item.title, teacher: item.teacher, place: item.place, weekday: day + 1, sessions: item.sessions, weeks: item.weeks })); pending[day] = null; };
-  text.split(/\r?\n/).forEach((line) => {
-    if (!line.trim() || /时间段|202\d-202\d学年/.test(line)) return;
-    line.split('\t').forEach((rawCell, day) => {
-      const cell = rawCell.trim(); if (!cell) return;
-      const titleMatch = cell.match(/^(.+?)[◆◇](?:\s|$)/);
-      const detail = cell.match(/^\(([^)]*节)\)\s*([^/]*)/);
-      if (titleMatch && !detail) { finish(day); pending[day] = { title: titleMatch[1].trim(), teacher: '', place: '', sessions: '', weeks: '' }; return; }
-      if (!pending[day]) return;
-      const item = pending[day];
-      if (detail) { item.sessions = detail[1]; item.weeks = detail[2].replace(/第/g, '').trim(); }
-      const teacher = cell.match(/教师:([^/]+)/); if (teacher) item.teacher = `${item.teacher}${item.teacher ? ',' : ''}${teacher[1].trim()}`;
-      const place = cell.match(/场地:([^/]+)/); if (place) item.place = place[1].trim();
-    });
-  });
-  pending.forEach((_, day) => finish(day));
-  return result.flat();
+    $('syncDialog').close(); showToast(`已导入 ${body.courses.length} 门课程`);
+  } catch (error) { showToast(`智能解析失败：${error.message}`); }
+  finally { button.disabled = false; button.textContent = '智能解析并导入'; }
 }
 
 function openAccountDialog(id = '') {
@@ -691,18 +579,13 @@ function bindEvents() {
   $('exportIcs').addEventListener('click', exportIcs);
   $('exportBackup').addEventListener('click', () => { download(`swu-calendar-backup-${today}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), settings: { ...state.settings, customWallpaper: '' }, events: state.events }, null, 2), 'application/json;charset=utf-8'); showToast('备份文件已导出'); });
   $('syncOpen').addEventListener('click', openSync);
-  $('manualImport').addEventListener('click', importManualSchedule);
-  $('manualImportFooter').addEventListener('click', importManualSchedule);
-  $('scheduleFile').addEventListener('change', async (event) => {
+  $('scheduleFile').addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    try {
-      $('schedulePaste').value = file.name.toLowerCase().endsWith('.pdf') ? await extractPdfText(file) : await file.text();
-      showToast(`已载入 ${file.name}，请检查识别结果后导入`);
-    }
-    catch { showToast('文件读取失败，请改用文本粘贴'); }
+    state.importFile = file;
+    $('scheduleFileName').textContent = `已选择：${file.name}`;
   });
-  $('importDemo').addEventListener('click', () => { replaceCourses(demoCourses); const status = '已导入示例课表'; localStorage.setItem('swu-calendar-sync-status', status); $('syncDialog').close(); renderAll(); showToast('示例课表已导入'); });
+  $('aiImport').addEventListener('click', importPdfWithAi);
   $('addExpense').addEventListener('click', () => openAccountDialog());
   $('exportAccounts').addEventListener('click', exportAccounts);
   $('accountForm').addEventListener('submit', submitAccount);
@@ -710,6 +593,8 @@ function bindEvents() {
   $('ledgerList').addEventListener('click', (event) => { const row = event.target.closest('[data-account-id]'); if (row) openAccountDialog(row.dataset.accountId); });
   $('timerToggle').addEventListener('click', toggleTimer);
   $('timerReset').addEventListener('click', () => resetTimer());
+  $('focusDurationFocus').addEventListener('change', (event) => updateFocusDuration('focus', event.target.value));
+  $('focusDurationBreak').addEventListener('change', (event) => updateFocusDuration('break', event.target.value));
   document.querySelectorAll('[data-focus-mode]').forEach((button) => button.addEventListener('click', () => resetTimer(button.dataset.focusMode)));
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); }));
 }

@@ -422,6 +422,10 @@ kbd { padding: 3px 7px; border: 1px solid var(--line); border-radius: 6px; color
 .focus-switch { display: flex; gap: 8px; margin-top: 15px; }
 .focus-switch button { padding: 9px 12px; border-radius: 999px; background: #f0ece5; color: var(--muted); font-size: 11px; }
 .focus-switch button.active { background: rgba(201,87,62,.12); color: var(--tomato); font-weight: 900; }
+.focus-duration-controls { display: flex; gap: 10px; margin-top: 12px; }
+.focus-duration-controls label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.focus-duration-controls input { width: 52px; padding: 7px 4px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.75); color: var(--ink); text-align: center; }
+.import-file-name { color: var(--muted); font-size: 12px; }
 
 .timer-wrap { display: grid; justify-items: center; gap: 24px; }
 .timer-ring {
@@ -585,6 +589,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 24px
   .focus-copy { text-align: center; }
   .focus-copy h2 { font-size: 34px; }
   .focus-switch { justify-content: center; }
+  .focus-duration-controls { justify-content: center; }
   .timer-ring { width: 250px; height: 250px; }
   .timer-ring strong { font-size: 52px; }
   .settings-columns { grid-template-columns: 1fr; gap: 5px; }
