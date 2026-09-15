@@ -1,0 +1,19 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+
+# Local editor and system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+**/project.private.config.json
+
+# Temporary artifacts
+tmp/
+*.log

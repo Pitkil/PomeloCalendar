@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#176b55">
+  <meta name="description" content="西南大学校园日历：课表、教学周、个人日程、番茄钟与个性化壁纸。">
+  <title>西柚日历 · SWU Campus Calendar</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-wallpaper="paper">
+  <div class="ambient" aria-hidden="true"></div>
+  <div class="app-shell">
+    <header class="masthead">
+      <div class="brand-block">
+        <span class="eyebrow">SWU CAMPUS CALENDAR</span>
+        <h1>西柚日历</h1>
+        <p id="semesterLine">载入学期信息…</p>
+      </div>
+      <div class="header-actions">
+        <button class="circle-button" id="syncOpen" title="同步课表" aria-label="同步课表">↻</button>
+        <button class="circle-button" id="settingsOpen" title="日历设置" aria-label="日历设置">⚙</button>
+      </div>
+    </header>
+
+    <section class="search-row" aria-label="搜索日程">
+      <span class="search-glyph">⌕</span>
+      <input id="searchInput" type="search" placeholder="搜索课程、老师、教室或个人日程" autocomplete="off">
+      <kbd>/</kbd>
+    </section>
+
+    <section class="dashboard-grid">
+      <aside class="today-rail paper-card">
+        <div class="rail-heading">
+          <span class="micro-label">TODAY</span>
+          <strong id="todayDate"></strong>
+        </div>
+        <div class="next-card" id="nextCard"></div>
+        <div class="stat-strip">
+          <div><strong id="todayCount">0</strong><span>今日安排</span></div>
+          <div><strong id="completedCount">0</strong><span>已完成</span></div>
+          <div class="tomato-stat"><strong id="focusMinutes">0</strong><span>专注分钟</span></div>
+        </div>
+        <div class="legend">
+          <span><i class="dot course"></i>教务课程</span>
+          <span><i class="dot personal"></i>个人日程</span>
+          <span><i class="dot focus"></i>专注记录</span>
+        </div>
+      </aside>
+
+      <main class="calendar-stage">
+        <nav class="view-tabs paper-card" aria-label="日历视图">
+          <button class="view-tab active" data-view="month">月历</button>
+          <button class="view-tab" data-view="week">周课表</button>
+          <button class="view-tab tomato-tab" data-view="focus">番茄钟</button>
+        </nav>
+
+        <section class="search-results paper-card hidden" id="searchResultsSection">
+          <div class="section-title-row">
+            <div><span class="micro-label">SEARCH</span><h2>搜索结果</h2></div>
+            <span class="subtle" id="searchCount"></span>
+          </div>
+          <div id="searchResults"></div>
+        </section>
+
+        <section class="calendar-panel paper-card" id="monthView">
+          <div class="calendar-toolbar">
+            <div class="month-nav">
+              <button class="ghost-icon" id="prevMonth" aria-label="上个月">‹</button>
+              <div><h2 id="monthTitle"></h2><p>日期左侧数字为教学周</p></div>
+              <button class="ghost-icon" id="nextMonth" aria-label="下个月">›</button>
+            </div>
+            <button class="pill-button" id="goToday">回到今天</button>
+          </div>
+          <div class="weekday-grid" aria-hidden="true">
+            <span class="week-label">周</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div class="month-grid" id="monthGrid"></div>
+        </section>
+
+        <section class="week-panel paper-card hidden" id="weekView">
+          <div class="section-title-row">
+            <div><span class="micro-label">ACADEMIC WEEK</span><h2 id="weekTitle">本周课表</h2></div>
+            <button class="pill-button" id="weekToday">回到本周</button>
+          </div>
+          <div class="week-grid" id="weekGrid"></div>
+        </section>
+
+        <section class="focus-panel paper-card hidden" id="focusView">
+          <div class="focus-copy">
+            <span class="micro-label tomato-ink">FOCUS SESSION</span>
+            <h2>把一件事，安静地做完。</h2>
+            <p>专注结束后，会自动在今天的日历中留下记录。</p>
+            <input id="focusTask" placeholder="这次想专注完成什么？" maxlength="60">
+            <div class="focus-switch">
+              <button class="active" data-focus-mode="focus">专注 <span id="focusLengthLabel">25</span> 分钟</button>
+              <button data-focus-mode="break">休息 <span id="breakLengthLabel">5</span> 分钟</button>
+            </div>
+          </div>
+          <div class="timer-wrap">
+            <div class="timer-ring" id="timerRing">
+              <span id="timerMode">专注时间</span>
+              <strong id="timerDisplay">25:00</strong>
+              <small id="roundDisplay">今日第 1 轮</small>
+            </div>
+            <div class="timer-actions">
+              <button class="quiet-button" id="timerReset">重置</button>
+              <button class="tomato-button" id="timerToggle">开始专注</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="agenda-panel paper-card" id="agendaPanel">
+          <div class="section-title-row">
+            <div><span class="micro-label" id="selectedWeekLabel">DAY PLAN</span><h2 id="selectedDateTitle"></h2></div>
+            <button class="add-button" id="addEvent">＋ 新增日程</button>
+          </div>
+          <div id="agendaList"></div>
+        </section>
+      </main>
+    </section>
+
+    <footer><span id="syncStatus">尚未同步课表</span><span>数据优先保存在本机 · 密码不持久化</span></footer>
+  </div>
+
+  <button class="floating-add" id="floatingAdd" aria-label="新增日程">＋</button>
+
+  <dialog id="eventDialog" class="sheet-dialog">
+    <form method="dialog" id="eventForm">
+      <div class="dialog-top"><div><span class="micro-label">PERSONAL EVENT</span><h2 id="eventDialogTitle">新增日程</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
+      <label class="field full"><span>日程名称</span><input id="eventTitle" required maxlength="60" placeholder="例如：完成软件工程实验"></label>
+      <div class="field-grid">
+        <label class="field"><span>日期</span><input id="eventDate" type="date" required></label>
+        <label class="field"><span>分类</span><select id="eventCategory"><option>学习</option><option>课程</option><option>考试</option><option>作业</option><option>活动</option><option>生活</option></select></label>
+        <label class="field"><span>开始时间</span><input id="eventStart" type="time" required></label>
+        <label class="field"><span>结束时间</span><input id="eventEnd" type="time" required></label>
+      </div>
+      <label class="field full"><span>地点</span><input id="eventLocation" maxlength="80" placeholder="教室、图书馆或线上"></label>
+      <label class="field full"><span>备注</span><textarea id="eventNotes" maxlength="300" placeholder="补充说明、待办事项……"></textarea></label>
+      <div class="dialog-actions"><button type="button" class="delete-button hidden" id="deleteEvent">删除</button><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">保存日程</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog" class="sheet-dialog wide-dialog">
+    <form method="dialog" id="settingsForm">
+      <div class="dialog-top"><div><span class="micro-label">PERSONALIZE</span><h2>日历设置</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
+      <div class="settings-columns">
+        <section><h3>学期</h3><label class="field"><span>学期名称</span><input id="settingSemesterTitle"></label><div class="field-grid"><label class="field"><span>开始日期</span><input id="settingSemesterStart" type="date"></label><label class="field"><span>结束日期</span><input id="settingSemesterEnd" type="date"></label></div><label class="field"><span>教学周数</span><input id="settingTotalWeeks" type="number" min="1" max="30"></label></section>
+        <section><h3>专注</h3><div class="field-grid"><label class="field"><span>专注分钟</span><input id="settingFocusMinutes" type="number" min="1" max="180"></label><label class="field"><span>休息分钟</span><input id="settingBreakMinutes" type="number" min="1" max="60"></label></div><h3>外观</h3><label class="field"><span>主题色</span><select id="settingAccent"><option value="#176b55">校历绿</option><option value="#316b83">湖水蓝</option><option value="#c9573e">番茄红</option><option value="#a87919">银杏金</option></select></label><label class="field"><span>预设壁纸</span><select id="settingWallpaper"><option value="paper">暖白纸张</option><option value="lake">缙云晨雾</option><option value="ginkgo">银杏午后</option><option value="night">暮色自习</option></select></label><label class="field"><span>卡片透明度</span><input id="settingOpacity" type="range" min="72" max="100"></label><label class="wallpaper-upload"><input id="wallpaperFile" type="file" accept="image/*"><span>＋ 上传自定义壁纸</span></label></section>
+      </div>
+      <label class="field full"><span>课表同步后端地址</span><input id="settingBackend" type="url" placeholder="https://your-server.example.com"></label>
+      <div class="utility-row"><button type="button" class="quiet-button" id="exportIcs">导出 ICS 日历</button><button type="button" class="quiet-button" id="exportBackup">备份 JSON</button></div>
+      <p class="privacy-note">自定义壁纸会压缩后保存在浏览器中。教务密码不会保存到浏览器。</p>
+      <div class="dialog-actions"><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">保存设置</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="syncDialog" class="sheet-dialog">
+    <form method="dialog" id="syncForm">
+      <div class="dialog-top"><div><span class="micro-label">COURSE SYNC</span><h2>同步西大课表</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
+      <p class="warning-note">只连接你自己部署并信任的后端。请勿向陌生服务提交统一认证密码。</p>
+      <label class="field full"><span>学号</span><input id="syncUsername" autocomplete="username" required></label>
+      <label class="field full"><span>统一认证密码</span><input id="syncPassword" type="password" autocomplete="current-password" required></label>
+      <div class="field-grid"><label class="field"><span>学年起始年</span><input id="syncYear" type="number" required></label><label class="field"><span>学期</span><select id="syncTerm"><option value="1">第一学期</option><option value="2">第二学期</option></select></label></div>
+      <div class="dialog-actions split"><button type="button" class="quiet-button" id="importDemo">导入示例课表</button><div><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">安全同步</button></div></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
