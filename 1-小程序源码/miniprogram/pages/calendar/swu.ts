@@ -53,6 +53,7 @@ const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
 const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
+const AI_SERVICE_URL = 'https://swu-calendar-ai-314241-5-1488632993.sh.run.tcloudbase.com/api/schedule/parse'
 let timerId: number | undefined
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -89,7 +90,7 @@ const defaultSettings = (): Settings => {
     wallpaper: 'paper',
     customWallpaper: '',
     cardOpacity: 94,
-    aiServiceUrl: 'http://127.0.0.1:8788/api/schedule/parse'
+    aiServiceUrl: AI_SERVICE_URL
   }
 }
 
@@ -250,6 +251,7 @@ Page({
     const todayKey = toDateKey(now)
     const savedSettings = wx.getStorageSync(STORAGE_SETTINGS) as Settings
     const settings = savedSettings && savedSettings.semesterStart ? { ...defaultSettings(), ...savedSettings } : defaultSettings()
+    if (!settings.aiServiceUrl || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//.test(settings.aiServiceUrl)) settings.aiServiceUrl = AI_SERVICE_URL
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
     const savedAccounts = wx.getStorageSync(STORAGE_ACCOUNTS) as AccountEntry[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
