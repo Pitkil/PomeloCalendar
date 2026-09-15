@@ -3,6 +3,7 @@
 const STORAGE_EVENTS = 'swu-calendar-events-v2';
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2';
 const STORAGE_FOCUS = 'swu-calendar-focus-v2';
+const CLOUD_AUTH_URL = 'https://swu-calendar-auth-314241-5-1488632993.sh.run.tcloudbase.com';
 const $ = (id) => document.getElementById(id);
 const pad = (value) => String(value).padStart(2, '0');
 const toDateKey = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -32,13 +33,13 @@ function defaultSettings() {
     wallpaper: 'paper',
     customWallpaper: '',
     opacity: 94,
-    backendUrl: 'http://127.0.0.1:8787'
+    backendUrl: CLOUD_AUTH_URL
   };
 }
 
 const today = toDateKey(new Date());
 const settings = { ...defaultSettings(), ...loadJson(STORAGE_SETTINGS, {}) };
-if (!settings.backendUrl) settings.backendUrl = defaultSettings().backendUrl;
+if (!settings.backendUrl || settings.backendUrl === 'http://127.0.0.1:8787') settings.backendUrl = CLOUD_AUTH_URL;
 const initialEvents = [{
   id: uid('welcome'), title: '完成校园日历实验', date: today, startTime: '19:00', endTime: '20:30',
   category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal', completed: false

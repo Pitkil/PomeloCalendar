@@ -10,7 +10,7 @@
 python -m http.server 8080
 ```
 
-然后访问 `http://localhost:8080`。如需同步真实课表，在云托管部署完成后，将其公网 HTTPS 地址填入“日历设置”。直接双击 `index.html` 也能使用其他本地功能。
+然后访问 `http://localhost:8080`。真实课表同步默认使用已部署的云端认证服务；也可以在“日历设置”中覆盖为自己的服务地址。直接双击 `index.html` 也能使用其他本地功能。
 
 ## 功能
 
@@ -35,4 +35,4 @@ python -m http.server 8080
 }
 ```
 
-默认后端地址是 `http://127.0.0.1:8787`，成功响应包含 `courses` 数组。密码只用于当次请求，不写入 localStorage，后端也不会保存密码或登录 Cookie。
+默认后端地址是 `https://swu-calendar-auth-314241-5-1488632993.sh.run.tcloudbase.com`，成功响应包含 `courses` 数组。密码只用于当次请求，不写入 localStorage，后端也不会保存密码或登录 Cookie。
