@@ -10,7 +10,7 @@
 python -m http.server 8080
 ```
 
-然后访问 `http://localhost:8080`。如需同步真实课表，另在 `3-认证后端源码` 中运行 `npm start`。直接双击 `index.html` 也能使用其他本地功能。
+然后访问 `http://localhost:8080`。如需同步真实课表，在云托管部署完成后，将其公网 HTTPS 地址填入“日历设置”。直接双击 `index.html` 也能使用其他本地功能。
 
 ## 功能
 

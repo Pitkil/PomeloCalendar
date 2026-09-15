@@ -203,7 +203,7 @@
       </view>
       <label class="field"><text>卡片透明度（70-100）</text><input type="number" value="{{settings.cardOpacity}}" data-field="cardOpacity" bindinput="onSettingsInput" /></label>
       <view class="upload-button" bindtap="chooseWallpaper" role="button">＋ 从相册选择自定义壁纸</view>
-      <label class="field"><text>课表同步后端地址</text><input value="{{settings.backendUrl}}" data-field="backendUrl" bindinput="onSettingsInput" placeholder="https://your-server.example.com" /></label>
+      <label class="field"><text>网页版 / 备用 HTTPS 后端地址（可选）</text><input value="{{settings.backendUrl}}" data-field="backendUrl" bindinput="onSettingsInput" placeholder="https://your-service.example.com" /></label>
       <view class="privacy-tip">教务账号密码只用于当次同步，不会写入本地缓存。</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSettings" role="button">取消</view><view class="primary-button" bindtap="saveSettings" role="button">保存设置</view></view>
     </scroll-view>
@@ -213,7 +213,7 @@
     <view class="bottom-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
       <view class="sheet-title">同步西大课表</view>
-      <view class="privacy-tip strong">本项目后端仅连接西南大学官方统一认证和教务系统。密码只用于本次登录，不保存、不写日志。</view>
+      <view class="privacy-tip strong">课表将通过本小程序的云托管服务连接西南大学官方统一认证和教务系统。密码只用于本次登录，不保存、不写日志。</view>
       <label class="field"><text>学号</text><input value="{{syncForm.username}}" data-field="username" bindinput="onSyncInput" placeholder="请输入学号" /></label>
       <label class="field"><text>统一认证密码</text><input password="true" value="{{syncForm.password}}" data-field="password" bindinput="onSyncInput" placeholder="仅用于本次同步" /></label>
       <view class="two-fields">

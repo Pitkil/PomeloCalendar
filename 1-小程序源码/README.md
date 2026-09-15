@@ -22,6 +22,6 @@
 
 ## 远端同步约定
 
-默认后端地址为 `http://127.0.0.1:8787`。先在 `3-认证后端源码` 中运行 `npm start`，再点击小程序右上角同步按钮。小程序向后端发送 `POST /api/swu/schedule`，请求体包含 `username`、`password`、`year` 和 `term`。
+小程序已绑定云环境 `cloud1-d4gevz3o6da314ea9`，会通过云托管服务 `swu-calendar-auth` 发送 `POST /api/swu/schedule`，请求体包含 `username`、`password`、`year` 和 `term`。部署一次云托管后，用户不需要在电脑运行任何后端。
 
-密码只用于当前请求，小程序不会持久化保存。微信开发者工具调试本地 HTTP 地址时，需要在“详情 → 本地设置”中启用“不校验合法域名、web-view、TLS 版本以及 HTTPS 证书”。正式发布时请使用 HTTPS 后端，并将域名加入小程序 request 合法域名。
+密码只用于当前请求，小程序不会持久化保存；认证服务也不会保存密码或登录 Cookie。云托管服务的部署步骤见 `3-认证后端源码/README.md`。

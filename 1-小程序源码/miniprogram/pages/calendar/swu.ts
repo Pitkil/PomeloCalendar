@@ -50,6 +50,8 @@ interface CourseLike {
 const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
+const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
+const CLOUD_SERVICE_NAME = 'swu-calendar-auth'
 let timerId: number | undefined
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -86,7 +88,7 @@ const defaultSettings = (): Settings => {
     wallpaper: 'paper',
     customWallpaper: '',
     cardOpacity: 94,
-    backendUrl: 'http://127.0.0.1:8787'
+    backendUrl: ''
   }
 }
 
@@ -240,7 +242,6 @@ Page({
     const todayKey = toDateKey(now)
     const savedSettings = wx.getStorageSync(STORAGE_SETTINGS) as Settings
     const settings = savedSettings && savedSettings.semesterStart ? { ...defaultSettings(), ...savedSettings } : defaultSettings()
-    if (!settings.backendUrl) settings.backendUrl = defaultSettings().backendUrl
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
     const initialEvents: CalendarEvent[] = savedEvents && savedEvents.length ? savedEvents : [
@@ -675,56 +676,79 @@ Page({
     this.refreshView()
   },
 
+  handleSyncResponse(response: any) {
+    try {
+      const body = response.data as any
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        const message = body && body.error && body.error.message ? body.error.message : `后端返回 ${response.statusCode}`
+        throw new Error(message)
+      }
+      const courses = body.courses || body.schedule || body.res || []
+      if (!Array.isArray(courses)) throw new Error('课表格式不正确')
+      this.replaceRemoteCourses(courses)
+      const now = new Date()
+      this.setData({ syncStatus: `同步成功 · ${pad(now.getHours())}:${pad(now.getMinutes())}`, syncVisible: false })
+      wx.showToast({ title: `同步 ${courses.length} 门课程`, icon: 'success' })
+    } catch (error) {
+      wx.showModal({ title: '同步失败', content: error instanceof Error ? error.message : '课表数据处理失败', showCancel: false })
+    }
+  },
+
+  handleSyncFailure(error: any, usingCloud = false) {
+    const hint = usingCloud
+      ? '请确认云托管服务 swu-calendar-auth 已部署并已发布。'
+      : '请检查备用 HTTPS 后端地址和网络。'
+    wx.showModal({
+      title: usingCloud ? '无法连接云托管' : '无法连接后端',
+      content: `${error.errMsg || '网络请求失败'}\n${hint}`,
+      showCancel: false
+    })
+  },
+
   syncCourses() {
     const backendUrl = String(this.data.settings.backendUrl || '')
-    if (!backendUrl) {
-      wx.showToast({ title: '请先在设置中填写后端地址', icon: 'none' })
-      return
-    }
     if (!this.data.syncForm.username || !this.data.syncForm.password) {
       wx.showToast({ title: '请填写学号和密码', icon: 'none' })
       return
     }
     wx.showLoading({ title: '正在同步' })
+    const data = {
+      username: this.data.syncForm.username,
+      password: this.data.syncForm.password,
+      year: Number(this.data.syncForm.year),
+      term: Number(this.data.syncForm.term)
+    }
+    const complete = () => {
+      wx.hideLoading()
+      this.setData({ 'syncForm.password': '' })
+    }
+
+    const cloud = wx.cloud as any
+    if (cloud && typeof cloud.callContainer === 'function') {
+      cloud.callContainer({
+        config: { env: CLOUD_ENV_ID },
+        service: CLOUD_SERVICE_NAME,
+        path: '/api/swu/schedule',
+        method: 'POST',
+        header: { 'content-type': 'application/json' },
+        data,
+        timeout: 30_000,
+        success: (response) => this.handleSyncResponse(response),
+        fail: (error) => this.handleSyncFailure(error, true),
+        complete
+      })
+      return
+    }
+
+    if (!backendUrl) {
+      complete()
+      wx.showModal({ title: '云开发不可用', content: '当前运行环境不支持云托管调用，请在设置中填写备用 HTTPS 后端地址。', showCancel: false })
+      return
+    }
     wx.request({
-      url: `${backendUrl}/api/swu/schedule`,
-      method: 'POST',
-      data: {
-        username: this.data.syncForm.username,
-        password: this.data.syncForm.password,
-        year: Number(this.data.syncForm.year),
-        term: Number(this.data.syncForm.term)
-      },
-      success: (response) => {
-        try {
-          const body = response.data as any
-          if (response.statusCode < 200 || response.statusCode >= 300) {
-            const message = body && body.error && body.error.message ? body.error.message : `后端返回 ${response.statusCode}`
-            throw new Error(message)
-          }
-          const courses = body.courses || body.schedule || body.res || []
-          if (!Array.isArray(courses)) throw new Error('课表格式不正确')
-          this.replaceRemoteCourses(courses)
-          const now = new Date()
-          this.setData({ syncStatus: `同步成功 · ${pad(now.getHours())}:${pad(now.getMinutes())}`, syncVisible: false })
-          wx.showToast({ title: `同步 ${courses.length} 门课程`, icon: 'success' })
-        } catch (error) {
-          wx.showModal({
-            title: '同步失败',
-            content: error instanceof Error ? error.message : '课表数据处理失败',
-            showCancel: false
-          })
-        }
-      },
-      fail: (error) => wx.showModal({
-        title: '无法连接后端',
-        content: `${error.errMsg || '网络请求失败'}\n请确认认证后端已启动。`,
-        showCancel: false
-      }),
-      complete: () => {
-        wx.hideLoading()
-        this.setData({ 'syncForm.password': '' })
-      }
+      url: `${backendUrl}/api/swu/schedule`, method: 'POST', data,
+      success: (response) => this.handleSyncResponse(response),
+      fail: (error) => this.handleSyncFailure(error), complete
     })
   }
 })

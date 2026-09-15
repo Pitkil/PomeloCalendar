@@ -24,7 +24,18 @@ npm start
 curl http://127.0.0.1:8787/health
 ```
 
-小程序和网页版的默认后端地址已经指向该地址。微信开发者工具调试 HTTP 本地服务时，需要在“详情 → 本地设置”中启用“不校验合法域名、web-view、TLS 版本以及 HTTPS 证书”。正式发布时必须部署为 HTTPS，并在微信公众平台配置 request 合法域名。
+本地运行只用于调试；已部署的小程序会通过云托管调用服务，无须填写本地地址。
+
+## 云托管部署
+
+本目录的 `cloudbaserc.json` 已绑定云环境 `cloud1-d4gevz3o6da314ea9`，服务名为 `swu-calendar-auth`。首次部署可在本目录执行：
+
+```bash
+npx @cloudbase/cli login
+npx @cloudbase/cli framework deploy
+```
+
+也可在微信开发者工具的“云开发 → 云托管”中创建同名服务，选择本目录的 `Dockerfile` 构建并部署。服务对外开放后，云开发控制台会给出公网 HTTPS 地址：将该地址填写到网页版“日历设置 → 课表同步后端地址”即可。小程序已使用 `wx.cloud.callContainer`，不需要该公网地址。
 
 ## API
 
