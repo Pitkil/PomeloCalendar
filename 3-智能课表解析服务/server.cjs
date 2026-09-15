@@ -1,8 +1,14 @@
 require('dotenv').config()
 
+const fs = require('node:fs/promises')
+const os = require('node:os')
+const path = require('node:path')
+const { execFile } = require('node:child_process')
+const { promisify } = require('node:util')
 const express = require('express')
 const multer = require('multer')
-const pdf = require('pdf-parse')
+
+const execFileAsync = promisify(execFile)
 
 const app = express()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } })
@@ -52,15 +58,34 @@ const cleanJson = (content) => {
   })).filter((course) => course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
 }
 
+const extractPdfText = async (buffer) => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'swu-schedule-'))
+  const pdfPath = path.join(tempDir, 'schedule.pdf')
+  try {
+    await fs.writeFile(pdfPath, buffer)
+    const { stdout } = await execFileAsync('pdftotext', ['-layout', '-enc', 'UTF-8', pdfPath, '-'], {
+      timeout: 30000,
+      maxBuffer: 4 * 1024 * 1024,
+      windowsHide: true
+    })
+    if (!stdout.trim()) throw new Error('PDF 未包含可读取文本')
+    return stdout
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PDF 未包含可读取文本') throw error
+    throw new Error('无法读取该 PDF，请确认它不是加密或损坏文件')
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true })
+  }
+}
+
 app.post('/api/schedule/parse', limitParseRequests, upload.single('schedule'), async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) throw new Error('服务端未配置 OPENAI_API_KEY')
     if (!baseUrl) throw new Error('服务端未配置 OPENAI_BASE_URL')
     if (!req.file || !/pdf$/i.test(req.file.originalname || '') && req.file.mimetype !== 'application/pdf') throw new Error('只接受 PDF 课表文件')
 
-    const extracted = await pdf(req.file.buffer)
-    if (!extracted.text.trim()) throw new Error('PDF 未包含可读取文本')
-    const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${extracted.text}`
+    const pdfText = await extractPdfText(req.file.buffer)
+    const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
