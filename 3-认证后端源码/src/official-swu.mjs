@@ -3,7 +3,9 @@ import { CookieJar } from './cookie-jar.mjs'
 
 const JW_SERVICE = 'https://jw.swu.edu.cn/sso/zllogin?federalEnable=true'
 const CAS_LOGIN = `https://uaaap.swu.edu.cn/cas/login?service=${encodeURIComponent(JW_SERVICE)}`
-const oauthUrl = new URL('http://idm.swu.edu.cn/am/oauth2/authorize')
+// Keep the complete SSO chain on HTTPS. The IDP sets Secure cookies; an HTTP
+// OAuth hop would silently drop them before the authorization redirect.
+const oauthUrl = new URL('https://idm.swu.edu.cn/am/oauth2/authorize')
 oauthUrl.search = new URLSearchParams({
   service: 'initService',
   response_type: 'code',
