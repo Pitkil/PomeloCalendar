@@ -1,6 +1,7 @@
 # Dependencies and build outputs
 node_modules/
 dist/
+**/__pycache__/
 
 # Local editor and system files
 .DS_Store
@@ -17,3 +18,4 @@ Thumbs.db
 # Temporary artifacts
 tmp/
 *.log
+2-网页版源码/captured-swu.json
