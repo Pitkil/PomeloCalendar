@@ -9,6 +9,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 
 const port = Number(process.env.PORT || 8788)
 const baseUrl = String(process.env.OPENAI_BASE_URL || '').replace(/\/$/, '')
 const model = process.env.OPENAI_MODEL || 'deepseek-v4-flash'
+const requestWindows = new Map()
+const RATE_WINDOW_MS = 15 * 60 * 1000
+const RATE_LIMIT = 8
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*')
@@ -19,6 +22,20 @@ app.use((req, res, next) => {
 })
 
 app.get('/health', (req, res) => res.json({ ok: true, model }))
+
+const limitParseRequests = (req, res, next) => {
+  const key = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
+  const now = Date.now()
+  const window = requestWindows.get(key) || { startedAt: now, count: 0 }
+  if (now - window.startedAt >= RATE_WINDOW_MS) {
+    window.startedAt = now
+    window.count = 0
+  }
+  window.count += 1
+  requestWindows.set(key, window)
+  if (window.count > RATE_LIMIT) return res.status(429).json({ error: '解析请求过于频繁，请 15 分钟后再试' })
+  next()
+}
 
 const cleanJson = (content) => {
   const text = String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
@@ -35,7 +52,7 @@ const cleanJson = (content) => {
   })).filter((course) => course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
 }
 
-app.post('/api/schedule/parse', upload.single('schedule'), async (req, res) => {
+app.post('/api/schedule/parse', limitParseRequests, upload.single('schedule'), async (req, res) => {
   try {
     if (!process.env.OPENAI_API_KEY) throw new Error('服务端未配置 OPENAI_API_KEY')
     if (!baseUrl) throw new Error('服务端未配置 OPENAI_BASE_URL')
