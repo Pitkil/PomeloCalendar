@@ -63,6 +63,11 @@
   align-items: center;
 }
 
+.brand-row {
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
 .brand-row,
 .calendar-head,
 .section-heading,
@@ -75,6 +80,7 @@
   font-size: 19rpx;
   font-weight: 800;
   letter-spacing: 4rpx;
+  white-space: nowrap;
 }
 
 .brand {
@@ -84,15 +90,19 @@
   font-size: 58rpx;
   font-weight: 900;
   letter-spacing: 2rpx;
+  line-height: 1.18;
+  white-space: nowrap;
 }
 
 .semester-line {
   margin-top: 8rpx;
   color: #52685f;
   font-size: 24rpx;
+  line-height: 1.45;
 }
 
 .hero-actions {
+  flex: none;
   gap: 12rpx;
 }
 
@@ -109,10 +119,23 @@
 }
 
 .icon-button {
+  min-width: 72rpx;
   width: 72rpx;
   height: 72rpx;
   font-size: 32rpx;
   box-shadow: 0 10rpx 24rpx rgba(27, 62, 53, .1);
+}
+
+.icon-button::after,
+.nav-button::after,
+.primary-button::after,
+.secondary-button::after,
+.danger-button::after,
+.upload-button::after,
+.today-button::after,
+.add-inline::after,
+.fab::after {
+  border: 0;
 }
 
 .search-box {
@@ -737,6 +760,7 @@
 
 .settings-sheet {
   height: 84vh;
+  padding-bottom: calc(148rpx + env(safe-area-inset-bottom));
 }
 
 .sheet-handle {
@@ -763,6 +787,7 @@
   color: #50645c;
   font-size: 21rpx;
   font-weight: 700;
+  min-width: 0;
 }
 
 .field input,
@@ -792,6 +817,7 @@
 .three-fields {
   display: grid;
   gap: 14rpx;
+  min-width: 0;
 }
 
 .two-fields {
@@ -800,6 +826,52 @@
 
 .three-fields {
   grid-template-columns: repeat(3, 1fr);
+}
+
+.two-fields .field,
+.three-fields .field {
+  min-width: 0;
+}
+
+.settings-sheet .sheet-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 10rpx -2rpx 0;
+  padding: 20rpx 2rpx calc(8rpx + env(safe-area-inset-bottom));
+  background: #fbfaf5;
+}
+
+.settings-sheet .sheet-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 14rpx;
+}
+
+@media (max-width: 360px) {
+  .page {
+    padding-left: 20rpx;
+    padding-right: 20rpx;
+  }
+
+  .hero {
+    padding-left: 4rpx;
+    padding-right: 4rpx;
+  }
+
+  .brand {
+    font-size: 52rpx;
+  }
+
+  .hero-actions {
+    gap: 8rpx;
+  }
+
+  .icon-button {
+    min-width: 64rpx;
+    width: 64rpx;
+    height: 64rpx;
+  }
 }
 
 .privacy-tip {
