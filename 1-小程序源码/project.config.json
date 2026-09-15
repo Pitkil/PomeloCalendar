@@ -6,7 +6,7 @@
   },
   "miniprogramRoot": "miniprogram/",
   "compileType": "miniprogram",
-  "projectname": "ts-demo",
+  "projectname": "swu-campus-calendar",
   "setting": {
     "useCompilerPlugins": [
       "typescript"
@@ -23,7 +23,7 @@
   "simulatorPluginLibVersion": {},
   "condition": {},
   "srcMiniprogramRoot": "miniprogram/",
-  "appid": "wx34ed2f6ebd145dbd",
+  "appid": "touristappid",
   "libVersion": "2.30.0",
   "editorSetting": {
     "tabIndent": "insertSpaces",

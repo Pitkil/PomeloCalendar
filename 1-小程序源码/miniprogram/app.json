@@ -1,18 +1,13 @@
 {
   "pages": [
-    "pages/calendar/swu",  
-    "pages/testadd",
-    "pages/index/index",
-    "pages/logs/logs",
-     "pages/picker/testpicker",
-    "pages/button/testButton",
-    "pages/testreadJson/readJson"
+    "pages/calendar/swu"
   ],
   "window": {
-    "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#fff",
-    "navigationBarTitleText": "西南大学校历",
-    "navigationBarTextStyle": "black"
+    "backgroundTextStyle": "dark",
+    "navigationBarBackgroundColor": "#f4f1e8",
+    "navigationBarTitleText": "西柚日历",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f4f1e8"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

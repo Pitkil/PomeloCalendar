@@ -1,15 +1,20 @@
 {
-  "name": "miniprogram-ts-less-quickstart",
-  "version": "1.0.0",
-  "description": "",
+  "name": "swu-campus-calendar-miniprogram",
+  "version": "2.0.0",
+  "description": "西柚日历微信小程序：校园日历、课表同步、日程管理、番茄钟和个性化壁纸。",
   "scripts": {
+    "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
+  "keywords": [
+    "wechat-miniprogram",
+    "calendar",
+    "swu",
+    "pomodoro"
+  ],
   "author": "",
   "license": "",
-  "dependencies": {
-  },
   "devDependencies": {
-    "miniprogram-api-typings": "^2.8.3-1"
+    "miniprogram-api-typings": "^2.8.3-1",
+    "typescript": "5.9.2"
   }
 }

@@ -1,3 +1,5 @@
 {
-  "usingComponents": {}
+  "navigationBarTitleText": "西柚日历",
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#f4f1e8"
 }
