@@ -162,6 +162,16 @@
       <label class="field full"><span>学号</span><input id="syncUsername" autocomplete="username" required></label>
       <label class="field full"><span>统一认证密码</span><input id="syncPassword" type="password" autocomplete="current-password" required></label>
       <div class="field-grid"><label class="field"><span>学年起始年</span><input id="syncYear" type="number" required></label><label class="field"><span>学期</span><select id="syncTerm"><option value="1">第一学期</option><option value="2">第二学期</option></select></label></div>
+      <details class="manual-import" id="manualImportPanel">
+        <summary>学校要求验证码？手动登录后导入</summary>
+        <div class="manual-import-body">
+          <p>先打开教务系统完成登录，再导出课表文件，或把课表表格复制到下方。文件只在本机解析，不会上传。</p>
+          <a class="manual-login-link" href="https://jw.swu.edu.cn" target="_blank" rel="noreferrer">↗ 打开西大教务系统</a>
+          <label class="wallpaper-upload import-upload"><input id="scheduleFile" type="file" accept=".json,.csv,.txt,application/json,text/csv,text/plain"><span>＋ 选择 JSON / CSV / 文本课表</span></label>
+          <label class="field full"><span>粘贴课表（支持 JSON、CSV 或制表符文本）</span><textarea id="schedulePaste" rows="5" placeholder="课程名称,教师,星期,节次,周次,教室\n软件工程,张老师,1,1-2,1-16,八教105"></textarea></label>
+          <button type="button" class="primary-button import-button" id="manualImport">导入到日历</button>
+        </div>
+      </details>
       <div class="dialog-actions split"><button type="button" class="quiet-button" id="importDemo">导入示例课表</button><div><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">安全同步</button></div></div>
     </form>
   </dialog>

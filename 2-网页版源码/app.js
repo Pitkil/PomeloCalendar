@@ -445,6 +445,72 @@ async function submitSync(event) {
   }
 }
 
+function splitImportLine(line, delimiter) {
+  const cells = [];
+  let cell = '';
+  let quoted = false;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"' && quoted) { cell += '"'; index += 1; continue; }
+    if (char === '"') { quoted = !quoted; continue; }
+    if (char === delimiter && !quoted) { cells.push(cell.trim()); cell = ''; continue; }
+    cell += char;
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function importWeekday(value) {
+  const text = String(value ?? '').trim();
+  const match = text.match(/[1-7]/);
+  if (match) return Number(match[0]);
+  return ({ 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 })[text.replace(/^星期?/, '')] || 0;
+}
+
+function importCoursesFromText(raw) {
+  const text = String(raw || '').replace(/^\uFEFF/, '').trim();
+  if (!text) throw new Error('请先选择或粘贴课表内容');
+  try {
+    const parsed = JSON.parse(text);
+    const list = Array.isArray(parsed) ? parsed : (parsed.courses || parsed.kbList || parsed.schedule || parsed.res);
+    if (Array.isArray(list) && list.length) return list.map(normalizeCourse);
+  } catch { /* Not JSON; continue with delimited text. */ }
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length < 2) throw new Error('未识别到课表数据，请提供 JSON、CSV 或带表头的表格文本');
+  const delimiter = lines[0].includes('\t') ? '\t' : ',';
+  const header = splitImportLine(lines[0], delimiter).map((item) => item.toLowerCase());
+  const aliases = {
+    title: ['课程名称', '课程', '科目', 'title', 'kcmc'], teacher: ['教师', '老师', 'teacher', 'xm'],
+    weekday: ['星期', '星期几', '周几', 'weekday', 'xqj'], sessions: ['节次', '上课节次', 'sessions', 'jc'],
+    weeks: ['周次', '上课周次', 'weeks', 'zcd'], place: ['教室', '地点', 'place', 'cdmc'], id: ['课程号', '课程代码', 'id', 'kch_id']
+  };
+  const indexOf = (names) => header.findIndex((item) => names.some((name) => item === name || item.includes(name)));
+  const indexes = Object.fromEntries(Object.entries(aliases).map(([key, names]) => [key, indexOf(names)]));
+  if (indexes.title < 0) throw new Error('表头中未找到“课程名称”列');
+  return lines.slice(1).map((line, index) => {
+    const cells = splitImportLine(line, delimiter);
+    const value = (key) => indexes[key] >= 0 ? cells[indexes[key]] : '';
+    const weekday = importWeekday(value('weekday'));
+    const title = value('title');
+    return title && weekday ? normalizeCourse({ id: value('id') || `manual-${index + 1}`, title, teacher: value('teacher'), weekday, sessions: value('sessions'), weeks: value('weeks'), place: value('place') }) : null;
+  }).filter(Boolean);
+}
+
+function importManualSchedule() {
+  try {
+    const courses = importCoursesFromText($('schedulePaste').value);
+    if (!courses.length) throw new Error('没有识别到有效课程，请检查星期和课程名称');
+    replaceCourses(courses);
+    const status = `手动导入成功 · ${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`;
+    localStorage.setItem('swu-calendar-sync-status', status);
+    $('syncDialog').close();
+    showToast(`已导入 ${courses.length} 门课程`);
+  } catch (error) {
+    showToast(`导入失败：${error.message}`);
+  }
+}
+
 function resetTimer(mode = state.timer.mode) {
   if (state.timer.handle) clearInterval(state.timer.handle);
   const duration = (mode === 'focus' ? state.settings.focusMinutes : state.settings.breakMinutes) * 60;
@@ -555,6 +621,13 @@ function bindEvents() {
   $('exportBackup').addEventListener('click', () => { download(`swu-calendar-backup-${today}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), settings: { ...state.settings, customWallpaper: '' }, events: state.events }, null, 2), 'application/json;charset=utf-8'); showToast('备份文件已导出'); });
   $('syncOpen').addEventListener('click', openSync);
   $('syncForm').addEventListener('submit', submitSync);
+  $('manualImport').addEventListener('click', importManualSchedule);
+  $('scheduleFile').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try { $('schedulePaste').value = await file.text(); showToast(`已载入 ${file.name}，点击“导入到日历”完成解析`); }
+    catch { showToast('文件读取失败，请改用文本粘贴'); }
+  });
   $('importDemo').addEventListener('click', () => { replaceCourses(demoCourses); const status = '已导入示例课表'; localStorage.setItem('swu-calendar-sync-status', status); $('syncDialog').close(); renderAll(); showToast('示例课表已导入'); });
   $('timerToggle').addEventListener('click', toggleTimer);
   $('timerReset').addEventListener('click', () => resetTimer());

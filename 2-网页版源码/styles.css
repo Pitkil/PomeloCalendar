@@ -487,6 +487,14 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 24px
 .dialog-actions { justify-content: flex-end; gap: 9px; margin-top: 10px; }
 .dialog-actions.split { justify-content: space-between; }
 .dialog-actions.split > div { display: flex; gap: 9px; }
+.manual-import { margin-top: 18px; border: 1px solid color-mix(in srgb, var(--accent) 22%, #d9ded6); border-radius: 14px; background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.manual-import summary { cursor: pointer; padding: 13px 16px; color: var(--accent); font-weight: 700; list-style-position: inside; }
+.manual-import-body { display: grid; gap: 12px; padding: 0 16px 16px; }
+.manual-import-body p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.manual-login-link { width: fit-content; color: var(--accent); font-weight: 700; text-decoration: none; }
+.manual-login-link:hover { text-decoration: underline; }
+.import-upload { margin: 0; }
+.import-button { justify-self: start; }
 .settings-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
 .settings-columns h3 { margin: 4px 0 15px; font-family: var(--serif); }
 .wallpaper-upload { display: block; margin-bottom: 15px; }
