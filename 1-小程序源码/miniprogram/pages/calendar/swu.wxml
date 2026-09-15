@@ -4,14 +4,14 @@
   <view class="shell">
     <view class="hero">
       <view class="brand-row">
-        <view>
+        <view class="brand-copy">
           <view class="eyebrow">SWU CAMPUS CALENDAR</view>
           <view class="brand">西柚日历</view>
           <view class="semester-line">{{settings.semesterTitle}} · {{teachingWeek ? '第' + teachingWeek + '教学周' : '假期 / 未排课'}}</view>
         </view>
         <view class="hero-actions">
-          <button class="icon-button" bindtap="openSync" aria-label="同步课表">↻</button>
-          <button class="icon-button" bindtap="openSettings" aria-label="设置">⚙</button>
+          <view class="icon-button" bindtap="openSync" role="button" aria-label="同步课表">↻</view>
+          <view class="icon-button" bindtap="openSettings" role="button" aria-label="设置">⚙</view>
         </view>
       </view>
 
@@ -48,13 +48,13 @@
 
     <view wx:if="{{viewMode === 'month'}}" class="calendar paper-card">
       <view class="calendar-head">
-        <button class="nav-button" bindtap="previousMonth">‹</button>
+        <view class="nav-button" bindtap="previousMonth" role="button" aria-label="上个月">‹</view>
         <view>
           <view class="month-title">{{monthTitle}}</view>
           <view class="muted small">轻点日期查看当天安排</view>
         </view>
-        <button class="today-button" bindtap="goToday">今天</button>
-        <button class="nav-button" bindtap="nextMonth">›</button>
+        <view class="today-button" bindtap="goToday" role="button">今天</view>
+        <view class="nav-button" bindtap="nextMonth" role="button" aria-label="下个月">›</view>
       </view>
 
       <view class="weekday-row">
@@ -87,7 +87,7 @@
           <text class="month-title">本周课表</text>
           <text class="muted small">第 {{teachingWeek || '—'}} 教学周</text>
         </view>
-        <button class="today-button" bindtap="goToday">回到今天</button>
+        <view class="today-button" bindtap="goToday" role="button">回到今天</view>
       </view>
       <scroll-view scroll-x="true" class="week-scroll" enhanced="true" show-scrollbar="false">
         <view class="week-columns">
@@ -118,8 +118,8 @@
       </view>
       <input class="focus-task" value="{{focus.taskTitle}}" bindinput="onFocusTaskInput" placeholder="这次想专注完成什么？" />
       <view class="focus-actions">
-        <button class="secondary-button" bindtap="resetTimer">重置</button>
-        <button class="primary-button tomato-button" bindtap="toggleTimer">{{focus.running ? '暂停' : '开始专注'}}</button>
+        <view class="secondary-button" bindtap="resetTimer" role="button">重置</view>
+        <view class="primary-button tomato-button" bindtap="toggleTimer" role="button">{{focus.running ? '暂停' : '开始专注'}}</view>
       </view>
       <view class="focus-note">完成后会自动生成一条专注记录，出现在今天的日历中。</view>
     </view>
@@ -130,7 +130,7 @@
           <view class="month-title">{{selectedLabel}}</view>
           <view class="muted small">{{teachingWeek ? '第' + teachingWeek + '教学周' : '假期 / 未排课'}}</view>
         </view>
-        <button class="add-inline" bindtap="openAdd">＋ 新增</button>
+        <view class="add-inline" bindtap="openAdd" role="button">＋ 新增</view>
       </view>
 
       <view wx:if="{{!selectedEvents.length}}" class="empty-state">
@@ -158,7 +158,7 @@
     <view class="footer-note">{{syncStatus}} · 数据仅保存在本机，密码不会持久化</view>
   </view>
 
-  <button wx:if="{{viewMode !== 'focus'}}" class="fab" bindtap="openAdd">＋</button>
+  <view wx:if="{{viewMode !== 'focus'}}" class="fab" bindtap="openAdd" role="button" aria-label="新增日程">＋</view>
 
   <view wx:if="{{editorVisible}}" class="modal-mask" bindtap="closeEditor">
     <view class="bottom-sheet" catchtap="noop">
@@ -176,9 +176,9 @@
       <label class="field"><text>地点</text><input value="{{form.location}}" data-field="location" bindinput="onFormInput" placeholder="教室、图书馆或线上" /></label>
       <label class="field"><text>备注</text><textarea value="{{form.notes}}" data-field="notes" bindinput="onFormInput" placeholder="补充说明、待办事项……" /></label>
       <view class="sheet-actions">
-        <button wx:if="{{editingId}}" class="danger-button" bindtap="deleteEvent">删除</button>
-        <button class="secondary-button" bindtap="closeEditor">取消</button>
-        <button class="primary-button" bindtap="saveEvent">保存日程</button>
+        <view wx:if="{{editingId}}" class="danger-button" bindtap="deleteEvent" role="button">删除</view>
+        <view class="secondary-button" bindtap="closeEditor" role="button">取消</view>
+        <view class="primary-button" bindtap="saveEvent" role="button">保存日程</view>
       </view>
     </view>
   </view>
@@ -202,10 +202,10 @@
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
       </view>
       <label class="field"><text>卡片透明度（70-100）</text><input type="number" value="{{settings.cardOpacity}}" data-field="cardOpacity" bindinput="onSettingsInput" /></label>
-      <button class="upload-button" bindtap="chooseWallpaper">＋ 从相册选择自定义壁纸</button>
+      <view class="upload-button" bindtap="chooseWallpaper" role="button">＋ 从相册选择自定义壁纸</view>
       <label class="field"><text>课表同步后端地址</text><input value="{{settings.backendUrl}}" data-field="backendUrl" bindinput="onSettingsInput" placeholder="https://your-server.example.com" /></label>
       <view class="privacy-tip">教务账号密码只用于当次同步，不会写入本地缓存。</view>
-      <view class="sheet-actions"><button class="secondary-button" bindtap="closeSettings">取消</button><button class="primary-button" bindtap="saveSettings">保存设置</button></view>
+      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSettings" role="button">取消</view><view class="primary-button" bindtap="saveSettings" role="button">保存设置</view></view>
     </scroll-view>
   </view>
 
@@ -220,8 +220,8 @@
         <label class="field"><text>学年起始年</text><input type="number" value="{{syncForm.year}}" data-field="year" bindinput="onSyncInput" /></label>
         <label class="field"><text>学期</text><input type="number" value="{{syncForm.term}}" data-field="term" bindinput="onSyncInput" /></label>
       </view>
-      <button class="upload-button" bindtap="importDemoCourses">先导入示例课表体验</button>
-      <view class="sheet-actions"><button class="secondary-button" bindtap="closeSync">取消</button><button class="primary-button" bindtap="syncCourses">安全同步</button></view>
+      <view class="upload-button" bindtap="importDemoCourses" role="button">先导入示例课表体验</view>
+      <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view><view class="primary-button" bindtap="syncCourses" role="button">安全同步</view></view>
     </view>
   </view>
 </view>

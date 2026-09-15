@@ -68,6 +68,11 @@
   gap: 20rpx;
 }
 
+.brand-copy {
+  flex: 1;
+  min-width: 0;
+}
+
 .brand-row,
 .calendar-head,
 .section-heading,
@@ -103,7 +108,8 @@
 
 .hero-actions {
   flex: none;
-  gap: 12rpx;
+  gap: 10rpx;
+  padding-top: 4rpx;
 }
 
 .icon-button,
@@ -119,11 +125,13 @@
 }
 
 .icon-button {
-  min-width: 72rpx;
-  width: 72rpx;
-  height: 72rpx;
-  font-size: 32rpx;
-  box-shadow: 0 10rpx 24rpx rgba(27, 62, 53, .1);
+  flex: none;
+  min-width: 64rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border: 1rpx solid rgba(23, 60, 52, .1);
+  font-size: 28rpx;
+  box-shadow: 0 8rpx 20rpx rgba(27, 62, 53, .08);
 }
 
 .icon-button::after,
@@ -268,9 +276,15 @@
 }
 
 .calendar-head {
-  gap: 12rpx;
+  display: grid;
+  grid-template-columns: 58rpx minmax(0, 1fr) auto 58rpx;
+  gap: 10rpx;
   padding: 0 8rpx 22rpx;
   text-align: center;
+}
+
+.calendar-head > view:nth-child(2) {
+  min-width: 0;
 }
 
 .month-title {
@@ -281,6 +295,8 @@
 }
 
 .nav-button {
+  flex: none;
+  min-width: 58rpx;
   width: 58rpx;
   height: 58rpx;
   font-size: 42rpx;
@@ -288,6 +304,10 @@
 
 .today-button,
 .add-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
   width: auto;
   margin: 0;
   padding: 0 22rpx;
@@ -673,6 +693,10 @@
 .secondary-button,
 .danger-button,
 .upload-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
   width: auto;
   margin: 0;
   padding: 0 28rpx;
@@ -727,6 +751,7 @@
   align-items: center;
   justify-content: center;
   width: 104rpx;
+  min-width: 104rpx;
   height: 104rpx;
   margin: 0;
   padding: 0;
@@ -842,7 +867,7 @@
   background: #fbfaf5;
 }
 
-.settings-sheet .sheet-actions button {
+.settings-sheet .sheet-actions > view {
   flex: 1;
   min-width: 0;
   padding: 0 14rpx;
@@ -868,9 +893,9 @@
   }
 
   .icon-button {
-    min-width: 64rpx;
-    width: 64rpx;
-    height: 64rpx;
+    min-width: 60rpx;
+    width: 60rpx;
+    height: 60rpx;
   }
 }
 
