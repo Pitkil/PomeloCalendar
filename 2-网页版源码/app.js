@@ -32,12 +32,13 @@ function defaultSettings() {
     wallpaper: 'paper',
     customWallpaper: '',
     opacity: 94,
-    backendUrl: ''
+    backendUrl: 'http://127.0.0.1:8787'
   };
 }
 
 const today = toDateKey(new Date());
 const settings = { ...defaultSettings(), ...loadJson(STORAGE_SETTINGS, {}) };
+if (!settings.backendUrl) settings.backendUrl = defaultSettings().backendUrl;
 const initialEvents = [{
   id: uid('welcome'), title: '完成校园日历实验', date: today, startTime: '19:00', endTime: '20:30',
   category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal', completed: false
@@ -424,8 +425,8 @@ async function submitSync(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: $('syncUsername').value.trim(), password: $('syncPassword').value, year: Number($('syncYear').value), term: Number($('syncTerm').value) })
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = await response.json();
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || `后端返回 ${response.status}`);
     const courses = body.courses || body.schedule || body.res || [];
     if (!Array.isArray(courses)) throw new Error('课表格式不正确');
     replaceCourses(courses);

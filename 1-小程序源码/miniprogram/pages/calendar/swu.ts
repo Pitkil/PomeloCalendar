@@ -86,7 +86,7 @@ const defaultSettings = (): Settings => {
     wallpaper: 'paper',
     customWallpaper: '',
     cardOpacity: 94,
-    backendUrl: ''
+    backendUrl: 'http://127.0.0.1:8787'
   }
 }
 
@@ -240,6 +240,7 @@ Page({
     const todayKey = toDateKey(now)
     const savedSettings = wx.getStorageSync(STORAGE_SETTINGS) as Settings
     const settings = savedSettings && savedSettings.semesterStart ? { ...defaultSettings(), ...savedSettings } : defaultSettings()
+    if (!settings.backendUrl) settings.backendUrl = defaultSettings().backendUrl
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
     const initialEvents: CalendarEvent[] = savedEvents && savedEvents.length ? savedEvents : [
@@ -695,15 +696,31 @@ Page({
         term: Number(this.data.syncForm.term)
       },
       success: (response) => {
-        const body = response.data as any
-        const courses = body.courses || body.schedule || body.res || []
-        if (!Array.isArray(courses)) throw new Error('课表格式不正确')
-        this.replaceRemoteCourses(courses)
-        const now = new Date()
-        this.setData({ syncStatus: `同步成功 · ${pad(now.getHours())}:${pad(now.getMinutes())}`, syncVisible: false })
-        wx.showToast({ title: `同步 ${courses.length} 门课程`, icon: 'success' })
+        try {
+          const body = response.data as any
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            const message = body && body.error && body.error.message ? body.error.message : `后端返回 ${response.statusCode}`
+            throw new Error(message)
+          }
+          const courses = body.courses || body.schedule || body.res || []
+          if (!Array.isArray(courses)) throw new Error('课表格式不正确')
+          this.replaceRemoteCourses(courses)
+          const now = new Date()
+          this.setData({ syncStatus: `同步成功 · ${pad(now.getHours())}:${pad(now.getMinutes())}`, syncVisible: false })
+          wx.showToast({ title: `同步 ${courses.length} 门课程`, icon: 'success' })
+        } catch (error) {
+          wx.showModal({
+            title: '同步失败',
+            content: error instanceof Error ? error.message : '课表数据处理失败',
+            showCancel: false
+          })
+        }
       },
-      fail: () => wx.showToast({ title: '同步失败，请检查后端和网络', icon: 'none' }),
+      fail: (error) => wx.showModal({
+        title: '无法连接后端',
+        content: `${error.errMsg || '网络请求失败'}\n请确认认证后端已启动。`,
+        showCancel: false
+      }),
       complete: () => {
         wx.hideLoading()
         this.setData({ 'syncForm.password': '' })

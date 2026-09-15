@@ -10,7 +10,7 @@
 python -m http.server 8080
 ```
 
-然后访问 `http://localhost:8080`。直接双击 `index.html` 也能使用除远端同步以外的大多数功能。
+然后访问 `http://localhost:8080`。如需同步真实课表，另在 `3-认证后端源码` 中运行 `npm start`。直接双击 `index.html` 也能使用其他本地功能。
 
 ## 功能
 
@@ -35,4 +35,4 @@ python -m http.server 8080
 }
 ```
 
-响应可以使用 `courses`、`schedule` 或 `res` 数组。密码只用于当次请求，不写入 localStorage。
+默认后端地址是 `http://127.0.0.1:8787`，成功响应包含 `courses` 数组。密码只用于当次请求，不写入 localStorage，后端也不会保存密码或登录 Cookie。

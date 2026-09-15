@@ -158,7 +158,7 @@
   <dialog id="syncDialog" class="sheet-dialog">
     <form method="dialog" id="syncForm">
       <div class="dialog-top"><div><span class="micro-label">COURSE SYNC</span><h2>同步西大课表</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
-      <p class="warning-note">只连接你自己部署并信任的后端。请勿向陌生服务提交统一认证密码。</p>
+      <p class="warning-note">本项目后端仅连接西南大学官方统一认证和教务系统。密码只用于本次登录，不保存、不写日志。</p>
       <label class="field full"><span>学号</span><input id="syncUsername" autocomplete="username" required></label>
       <label class="field full"><span>统一认证密码</span><input id="syncPassword" type="password" autocomplete="current-password" required></label>
       <div class="field-grid"><label class="field"><span>学年起始年</span><input id="syncYear" type="number" required></label><label class="field"><span>学期</span><select id="syncTerm"><option value="1">第一学期</option><option value="2">第二学期</option></select></label></div>

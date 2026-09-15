@@ -213,7 +213,7 @@
     <view class="bottom-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
       <view class="sheet-title">同步西大课表</view>
-      <view class="privacy-tip strong">请只连接你自己部署并信任的后端。不要向陌生服务提交教务密码。</view>
+      <view class="privacy-tip strong">本项目后端仅连接西南大学官方统一认证和教务系统。密码只用于本次登录，不保存、不写日志。</view>
       <label class="field"><text>学号</text><input value="{{syncForm.username}}" data-field="username" bindinput="onSyncInput" placeholder="请输入学号" /></label>
       <label class="field"><text>统一认证密码</text><input password="true" value="{{syncForm.password}}" data-field="password" bindinput="onSyncInput" placeholder="仅用于本次同步" /></label>
       <view class="two-fields">
