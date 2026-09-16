@@ -70,18 +70,19 @@ const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', d
     },
     fail: (error: any) => {
       const message = String(error?.errMsg || '')
-      const timeoutError = /102002|timeout|超时/i.test(message) ? new Error('连接解析服务超时，请稍后重试') : new Error('暂时无法连接解析服务，请检查网络后重试')
-      ;(timeoutError as any).retryable = /102002|timeout|超时/i.test(message)
-      reject(timeoutError)
+      const retryable = /102002|timeout|超时|network|socket|tls|disconnected|eof|连接|request:fail/i.test(message)
+      const connectionError = /102002|timeout|超时/i.test(message) ? new Error('连接解析服务超时，请稍后重试') : new Error('连接解析服务中断，正在自动重试')
+      ;(connectionError as any).retryable = retryable
+      reject(connectionError)
     }
   })
 })
 
 const callScheduleService = async (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try { return await callScheduleServiceOnce(path, method, data) } catch (error) {
-      if (!(error as any)?.retryable || attempt > 0) throw error
-      await wait(600)
+      if (!(error as any)?.retryable || attempt >= 3) throw error
+      await wait(600 * (attempt + 1))
     }
   }
   throw new Error('暂时无法连接解析服务，请稍后重试')
