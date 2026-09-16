@@ -722,25 +722,19 @@ Page({
     wx.chooseMessageFile({ count: 1, type: 'file', success: async (result) => {
       const file = result.tempFiles[0]
       if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
-      if (Number(file.size || 0) > 8 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 8MB 的 PDF 课表。', showCancel: false }); return }
-      let uploadedFileID = ''
-      let jobCreated = false
+      if (Number(file.size || 0) > 5 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 5MB 的 PDF 课表。', showCancel: false }); return }
       const clientRequestId = `mini-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
       try {
-        wx.showLoading({ title: '上传课表中', mask: true })
-        const uploadResult = await new Promise<any>((resolve, reject) => wx.cloud.uploadFile({
-          cloudPath: `schedule-imports/${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`,
-          filePath: file.path,
-          success: resolve,
-          fail: reject
+        wx.showLoading({ title: '读取课表中', mask: true })
+        const readResult = await new Promise<any>((resolve, reject) => wx.getFileSystemManager().readFile({
+          filePath: file.path, encoding: 'base64', success: resolve, fail: reject
         }))
-        uploadedFileID = String(uploadResult.fileID || '')
-        if (!uploadedFileID) throw new Error('课表上传失败，请稍后重试')
+        const fileData = String(readResult.data || '')
+        if (!fileData) throw new Error('无法读取课表文件，请重新选择')
 
         wx.showLoading({ title: '正在创建任务', mask: true })
-        const created = await callScheduleService('/api/schedule/jobs', 'POST', { fileID: uploadedFileID, fileName: file.name || 'schedule.pdf', clientRequestId })
+        const created = await callScheduleService('/api/schedule/jobs-base64', 'POST', { fileData, fileName: file.name || 'schedule.pdf', clientRequestId })
         if (!created.jobId) throw new Error('解析任务创建失败，请稍后重试')
-        jobCreated = true
 
         wx.showLoading({ title: '模型解析中', mask: true })
         let completed: any
@@ -765,7 +759,6 @@ Page({
         wx.showToast({ title: `导入 ${completed.courses.length} 门课程`, icon: 'success' })
       } catch (error) {
         wx.hideLoading()
-        if (uploadedFileID && !jobCreated) wx.cloud.deleteFile({ fileList: [uploadedFileID] })
         wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
       }
     } })

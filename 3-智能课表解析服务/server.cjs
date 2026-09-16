@@ -46,7 +46,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
 })
-app.use(express.json({ limit: '128kb' }))
+app.use(express.json({ limit: '8mb' }))
 
 app.get('/health', (req, res) => res.json({ ok: true, model }))
 
@@ -175,17 +175,24 @@ const recoverStaleJobs = async () => {
 
 const processJob = async (job) => {
   try {
-    const downloaded = await cloud.downloadFile({ fileID: job.fileID })
-    const buffer = Buffer.isBuffer(downloaded.fileContent) ? downloaded.fileContent : Buffer.from(downloaded.fileContent || '')
+    let buffer
+    if (job.fileBase64) {
+      buffer = Buffer.from(String(job.fileBase64), 'base64')
+    } else {
+      const downloaded = await cloud.downloadFile({ fileID: job.fileID })
+      buffer = Buffer.isBuffer(downloaded.fileContent) ? downloaded.fileContent : Buffer.from(downloaded.fileContent || '')
+    }
     const courses = await parseSchedule(buffer)
-    await jobs.doc(job._id).update({ status: 'succeeded', courses, error: '', updatedAt: Date.now(), finishedAt: Date.now() })
+    await jobs.doc(job._id).update({ status: 'succeeded', courses, error: '', fileBase64: '', updatedAt: Date.now(), finishedAt: Date.now() })
   } catch (error) {
-    await jobs.doc(job._id).update({ status: 'failed', error: friendlyError(error), updatedAt: Date.now(), finishedAt: Date.now() })
+    await jobs.doc(job._id).update({ status: 'failed', error: friendlyError(error), fileBase64: '', updatedAt: Date.now(), finishedAt: Date.now() })
   } finally {
-    try {
-      await cloud.deleteFile({ fileList: [job.fileID] })
-    } catch (error) {
-      console.warn('Unable to delete temporary schedule file:', error?.message || 'unknown error')
+    if (job.fileID) {
+      try {
+        await cloud.deleteFile({ fileList: [job.fileID] })
+      } catch (error) {
+        console.warn('Unable to delete temporary schedule file:', error?.message || 'unknown error')
+      }
     }
   }
 }
@@ -234,6 +241,36 @@ app.post('/api/schedule/jobs', limitParseRequests, async (req, res) => {
     setImmediate(() => void runPendingJobs())
   } catch (error) {
     console.error('Unable to create schedule job:', error?.message || 'unknown error')
+    res.status(503).json({ error: '云数据库暂时不可用，请稍后重试' })
+  }
+})
+
+app.post('/api/schedule/jobs-base64', limitParseRequests, async (req, res) => {
+  const openId = openIdOf(req)
+  if (!openId) return res.status(401).json({ error: '请从关联的微信小程序发起导入' })
+  const fileName = String(req.body?.fileName || '').slice(0, 160)
+  const fileBase64 = String(req.body?.fileData || '').replace(/^data:application\/pdf;base64,/i, '')
+  const clientRequestId = String(req.body?.clientRequestId || '').slice(0, 80)
+  let buffer
+  try {
+    buffer = Buffer.from(fileBase64, 'base64')
+  } catch {
+    buffer = Buffer.alloc(0)
+  }
+  if (!/\.pdf$/i.test(fileName) || !/^[a-zA-Z0-9_-]{8,80}$/.test(clientRequestId) || !buffer.length || buffer.length > 5 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== '%PDF') {
+    return res.status(422).json({ error: '课表文件无效，请重新选择不超过 5MB 的 PDF' })
+  }
+  try {
+    await ensureCollection()
+    const existing = await jobs.where({ ownerOpenId: openId, clientRequestId }).limit(1).get()
+    if (existing.data?.[0]) return res.status(202).json({ jobId: existing.data[0]._id, status: existing.data[0].status })
+    const jobId = crypto.randomUUID()
+    const now = Date.now()
+    await jobs.doc(jobId).set({ ownerOpenId: openId, clientRequestId, fileID: '', fileName, fileBase64, status: 'pending', courses: [], error: '', attempts: 0, createdAt: now, updatedAt: now })
+    res.status(202).json({ jobId, status: 'pending' })
+    setImmediate(() => void runPendingJobs())
+  } catch (error) {
+    console.error('Unable to create inline schedule job:', error?.message || 'unknown error')
     res.status(503).json({ error: '云数据库暂时不可用，请稍后重试' })
   }
 })
