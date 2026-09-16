@@ -156,16 +156,21 @@ const parseWeeks = (raw: string | number[] | undefined, totalWeeks: number) => {
 }
 
 const timeFromSessions = (raw = '') => {
-  const first = Number((raw.match(/\d+/) || ['1'])[0])
+  // 西南大学课表的 1-14 节时间。课程可能是“12-14节”“第12，13，14节”等格式，
+  // 因此需要分别取首节的开始时间和末节的结束时间，不能只按奇数节匹配。
   const table: Record<number, [string, string]> = {
-    1: ['08:00', '09:40'],
-    3: ['10:10', '11:50'],
-    5: ['14:00', '15:40'],
-    7: ['16:10', '17:50'],
-    9: ['19:00', '20:40'],
-    11: ['20:50', '22:20']
+    1: ['08:00', '08:45'], 2: ['08:55', '09:40'],
+    3: ['10:00', '10:45'], 4: ['10:55', '11:40'],
+    5: ['12:10', '12:55'], 6: ['13:05', '13:50'],
+    7: ['14:00', '14:45'], 8: ['14:55', '15:40'],
+    9: ['15:50', '16:35'], 10: ['16:55', '17:40'],
+    11: ['17:50', '18:35'], 12: ['19:20', '20:05'],
+    13: ['20:15', '21:00'], 14: ['21:10', '21:55']
   }
-  return table[first] || ['08:00', '09:40']
+  const sections = (String(raw).match(/\d+/g) || ['1']).map(Number)
+  const first = Math.max(1, Math.min(14, sections[0] || 1))
+  const last = Math.max(first, Math.min(14, sections[sections.length - 1] || first))
+  return [table[first]?.[0] || table[1][0], table[last]?.[1] || table[2][1]]
 }
 
 const courseToEvents = (course: CourseLike, settings: Settings, courseIndex: number): CalendarEvent[] => {
