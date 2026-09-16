@@ -220,9 +220,9 @@ const parseSchedule = async (buffer) => {
   const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
   const delimitedPrompt = `你是西南大学课程表结构化助手。读取下面的课表 PDF 文本，逐行输出所有课程安排。只能输出 BEGIN_COURSES、每行一个独立 JSON 对象、END_COURSES，不能输出解释、数组、表头或 Markdown。示例：\nBEGIN_COURSES\n{"title":"软件工程","teacher":"张老师","place":"25-0601","weekday":3,"sessions":"3-4节","weeks":"1-16周"}\nEND_COURSES\n星期一到星期日使用 1-7。同一门课在不同星期、节次或周次必须分别输出。不要遗漏或凭空补课程。\n\nPDF 文本：\n${pdfText}`
   let lastError
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      const delimited = attempt === 1
+      const delimited = attempt === 3
       const requestBody = {
         model,
         temperature: 0,
@@ -244,8 +244,8 @@ const parseSchedule = async (buffer) => {
     } catch (error) {
       lastError = error
       const message = String(error?.message || error || '')
-      if (attempt || !/unexpected token|JSON|模型返回中缺少|模型未识别/i.test(message)) throw error
-      console.warn('Model returned invalid schedule JSON; retrying with delimited output')
+      if (attempt >= 3 || !/unexpected token|JSON|模型返回中缺少|模型未识别/i.test(message)) throw error
+      console.warn(`Model returned invalid schedule JSON; retrying (${attempt + 1}/3)`)
     }
   }
   throw lastError || new Error('模型返回格式异常')
