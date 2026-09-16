@@ -216,12 +216,15 @@ app.post('/api/schedule/jobs', limitParseRequests, async (req, res) => {
   if (!openId) return res.status(401).json({ error: '请从关联的微信小程序发起导入' })
   const fileID = String(req.body?.fileID || '')
   const fileName = String(req.body?.fileName || '').slice(0, 160)
-  if (!/\.pdf$/i.test(fileName) || !fileID.startsWith('cloud://') || !fileID.includes('/schedule-imports/')) return res.status(422).json({ error: '课表文件无效，请重新选择 PDF' })
+  const clientRequestId = String(req.body?.clientRequestId || '').slice(0, 80)
+  if (!/\.pdf$/i.test(fileName) || !fileID.startsWith('cloud://') || !fileID.includes('/schedule-imports/') || !/^[a-zA-Z0-9_-]{8,80}$/.test(clientRequestId)) return res.status(422).json({ error: '课表文件无效，请重新选择 PDF' })
   try {
     await ensureCollection()
+    const existing = await jobs.where({ ownerOpenId: openId, clientRequestId }).limit(1).get()
+    if (existing.data?.[0]) return res.status(202).json({ jobId: existing.data[0]._id, status: existing.data[0].status })
     const jobId = crypto.randomUUID()
     const now = Date.now()
-    await jobs.doc(jobId).set({ ownerOpenId: openId, fileID, fileName, status: 'pending', courses: [], error: '', attempts: 0, createdAt: now, updatedAt: now })
+    await jobs.doc(jobId).set({ ownerOpenId: openId, clientRequestId, fileID, fileName, status: 'pending', courses: [], error: '', attempts: 0, createdAt: now, updatedAt: now })
     res.status(202).json({ jobId, status: 'pending' })
     setImmediate(() => void runPendingJobs())
   } catch (error) {

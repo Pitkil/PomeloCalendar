@@ -56,13 +56,10 @@ const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
 const CLOUD_SERVICE_NAME = 'swu-calendar-ai'
 let timerId: number | undefined
 
-const callScheduleService = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
+const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
   ;(wx.cloud as any).callContainer({
-    config: { env: CLOUD_ENV_ID },
-    path,
-    method,
-    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' },
-    data,
+    config: { env: CLOUD_ENV_ID }, path, method,
+    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data,
     success: (response: any) => {
       try {
         const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {})
@@ -72,11 +69,22 @@ const callScheduleService = (path: string, method: 'GET' | 'POST' = 'GET', data?
     },
     fail: (error: any) => {
       const message = String(error?.errMsg || '')
-      if (/102002|timeout|超时/i.test(message)) reject(new Error('连接解析服务超时，请稍后重试'))
-      else reject(new Error('暂时无法连接解析服务，请检查网络后重试'))
+      const timeoutError = /102002|timeout|超时/i.test(message) ? new Error('连接解析服务超时，请稍后重试') : new Error('暂时无法连接解析服务，请检查网络后重试')
+      ;(timeoutError as any).retryable = /102002|timeout|超时/i.test(message)
+      reject(timeoutError)
     }
   })
 })
+
+const callScheduleService = async (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try { return await callScheduleServiceOnce(path, method, data) } catch (error) {
+      if (!(error as any)?.retryable || attempt > 0) throw error
+      await wait(600)
+    }
+  }
+  throw new Error('暂时无法连接解析服务，请稍后重试')
+}
 
 const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
 
@@ -711,6 +719,7 @@ Page({
       if (Number(file.size || 0) > 8 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 8MB 的 PDF 课表。', showCancel: false }); return }
       let uploadedFileID = ''
       let jobCreated = false
+      const clientRequestId = `mini-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
       try {
         wx.showLoading({ title: '上传课表中', mask: true })
         const uploadResult = await new Promise<any>((resolve, reject) => wx.cloud.uploadFile({
@@ -723,7 +732,7 @@ Page({
         if (!uploadedFileID) throw new Error('课表上传失败，请稍后重试')
 
         wx.showLoading({ title: '正在创建任务', mask: true })
-        const created = await callScheduleService('/api/schedule/jobs', 'POST', { fileID: uploadedFileID, fileName: file.name || 'schedule.pdf' })
+        const created = await callScheduleService('/api/schedule/jobs', 'POST', { fileID: uploadedFileID, fileName: file.name || 'schedule.pdf', clientRequestId })
         if (!created.jobId) throw new Error('解析任务创建失败，请稍后重试')
         jobCreated = true
 
