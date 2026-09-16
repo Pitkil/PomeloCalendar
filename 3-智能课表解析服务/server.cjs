@@ -185,6 +185,33 @@ const extractPdfText = async (buffer) => {
   }
 }
 
+const requestModelCompletion = async (requestBody) => {
+  let lastError
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(120000)
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const error = new Error(result?.error?.message || `模型服务返回 ${response.status}`)
+        error.retryable = response.status === 408 || response.status === 429 || response.status >= 500
+        throw error
+      }
+      return result
+    } catch (error) {
+      lastError = error
+      const retryable = error?.retryable || /fetch failed|network|socket|ECONN|EAI_AGAIN|abort|timeout|timed out/i.test(String(error?.message || error || ''))
+      if (!retryable || attempt >= 2) throw error
+      await new Promise((resolve) => setTimeout(resolve, attempt ? 5000 : 2000))
+    }
+  }
+  throw lastError
+}
+
 const parseSchedule = async (buffer) => {
   if (!process.env.OPENAI_API_KEY) throw new Error('服务端未配置 OPENAI_API_KEY')
   if (!baseUrl) throw new Error('服务端未配置 OPENAI_BASE_URL')
@@ -204,14 +231,7 @@ const parseSchedule = async (buffer) => {
         ...(delimited ? {} : { response_format: { type: 'json_object' } }),
         messages: [{ role: 'user', content: delimited ? delimitedPrompt : prompt }]
       }
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(120000)
-      })
-      const result = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
+      const result = await requestModelCompletion(requestBody)
       const content = result?.choices?.[0]?.message?.content || result?.choices?.[0]?.message?.reasoning_content || result?.choices?.[0]?.text || ''
       let courses
       if (delimited) {
