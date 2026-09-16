@@ -10,6 +10,7 @@
     "@cloudbase/node-sdk": "^3.18.3",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "jsonrepair": "^3.13.1",
     "multer": "^2.0.2"
   }
 }
