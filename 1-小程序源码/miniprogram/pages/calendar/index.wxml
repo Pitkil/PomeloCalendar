@@ -5,9 +5,9 @@
     <view class="hero">
       <view class="brand-row">
         <view class="brand-copy">
-          <view class="eyebrow">SWU CAMPUS CALENDAR</view>
+          <view class="eyebrow">CAMPUS CALENDAR</view>
           <view class="brand">西柚日历</view>
-          <view class="semester-line">{{settings.semesterTitle}} · {{teachingWeek ? '第' + teachingWeek + '教学周' : '假期 / 未排课'}}</view>
+          <view class="semester-line">{{settings.schoolName}} · {{settings.semesterTitle}} · {{teachingWeek ? '第' + teachingWeek + '教学周' : '假期 / 未排课'}}</view>
         </view>
         <view class="hero-actions">
           <view class="icon-button" bindtap="openSync" role="button" aria-label="同步课表">↻</view>
@@ -193,7 +193,7 @@
       </view>
     </view>
 
-    <view class="footer-note">{{syncStatus}} · 课表、日程与账目仅保存在本机</view>
+    <view class="footer-note">{{syncStatus}} · 日程与账目保存在本机 · PDF 仅用于课表解析</view>
   </view>
 
   <view wx:if="{{viewMode === 'month' || viewMode === 'week'}}" class="fab" bindtap="openAdd" role="button" aria-label="新增日程">＋</view>
@@ -226,12 +226,15 @@
     <scroll-view scroll-y="true" class="bottom-sheet settings-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
       <view class="sheet-title">日历设置</view>
+      <label class="field"><text>学校名称</text><input value="{{settings.schoolName}}" data-field="schoolName" bindinput="onSettingsInput" placeholder="例如：我的大学" /></label>
+      <label class="field"><text>教务系统入口（可选）</text><input value="{{settings.portalUrl}}" data-field="portalUrl" bindinput="onSettingsInput" placeholder="https://..." /></label>
       <label class="field"><text>学期名称</text><input value="{{settings.semesterTitle}}" data-field="semesterTitle" bindinput="onSettingsInput" /></label>
       <view class="two-fields">
         <label class="field"><text>学期开始</text><picker mode="date" value="{{settings.semesterStart}}" bindchange="onSemesterStartChange"><view class="picker-field">{{settings.semesterStart}}</view></picker></label>
         <label class="field"><text>学期结束</text><picker mode="date" value="{{settings.semesterEnd}}" bindchange="onSemesterEndChange"><view class="picker-field">{{settings.semesterEnd}}</view></picker></label>
       </view>
       <label class="field"><text>教学周</text><input type="number" value="{{settings.totalWeeks}}" data-field="totalWeeks" bindinput="onSettingsInput" /></label>
+      <label class="field"><text>每节课时间（按第1节起，用逗号分隔）</text><textarea class="period-times-input" value="{{settings.periodTimes}}" data-field="periodTimes" bindinput="onSettingsInput" placeholder="08:00-08:45,08:55-09:40" /></label>
       <view class="two-fields">
         <label class="field"><text>主题色</text><picker range="{{accentOptions}}" range-key="name" bindchange="onAccentChange"><view class="picker-field">点击选择</view></picker></label>
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
@@ -247,9 +250,9 @@
     <view class="bottom-sheet" catchtap="noop">
       <view class="sheet-handle"></view>
       <view class="sheet-title">导入课表</view>
-      <view class="privacy-tip strong">先打开西大办事大厅，进入“教务系统/我的课表”并导出 PDF。上传后由智能解析服务调用大模型整理课程信息。</view>
+      <view class="privacy-tip strong">从所在学校的教务系统导出 PDF 课表后上传。模型会识别网格课表、带具体时间的课表和日期清单；未写明时间时使用设置中的节次时间。</view>
       <view class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 选择 PDF 课表文件</view>
-      <view class="manual-login-link" bindtap="openJw" role="button">↗ 复制办事大厅网址</view>
+      <view wx:if="{{settings.portalUrl}}" class="manual-login-link" bindtap="openPortal" role="button">↗ 复制 {{settings.schoolName}} 教务入口</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view></view>
     </view>
   </view>

@@ -5,6 +5,7 @@ const STORAGE_SETTINGS = 'swu-calendar-settings-v2';
 const STORAGE_FOCUS = 'swu-calendar-focus-v2';
 const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1';
 const AI_SERVICE_URL = 'https://swu-calendar-ai-314241-5-1488632993.sh.run.tcloudbase.com/api/schedule/parse';
+const DEFAULT_PERIOD_TIMES = '08:00-08:45,08:55-09:40,10:00-10:45,10:55-11:40,12:10-12:55,13:05-13:50,14:00-14:45,14:55-15:40,15:50-16:35,16:55-17:40,17:50-18:35,19:20-20:05,20:15-21:00,21:10-21:55';
 const $ = (id) => document.getElementById(id);
 const pad = (value) => String(value).padStart(2, '0');
 const toDateKey = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -24,6 +25,9 @@ function defaultSettings() {
   const firstTerm = now.getMonth() >= 7;
   const startYear = firstTerm ? now.getFullYear() : now.getFullYear() - 1;
   return {
+    schoolName: '我的校园',
+    portalUrl: '',
+    periodTimes: DEFAULT_PERIOD_TIMES,
     semesterTitle: `${startYear}-${startYear + 1}-${firstTerm ? 1 : 2}`,
     semesterStart: firstTerm ? `${startYear}-09-07` : `${startYear + 1}-02-23`,
     semesterEnd: firstTerm ? `${startYear + 1}-01-17` : `${startYear + 1}-07-05`,
@@ -112,7 +116,7 @@ function applyAppearance() {
 
 function renderHeader() {
   const week = teachingWeekOf(state.selectedDate);
-  $('semesterLine').textContent = `${state.settings.semesterTitle} · ${week ? `第 ${week} 教学周` : '假期 / 未排课'}`;
+  $('semesterLine').textContent = `${state.settings.schoolName} · ${state.settings.semesterTitle} · ${week ? `第 ${week} 教学周` : '假期 / 未排课'}`;
   const now = new Date();
   $('todayDate').textContent = `${now.getMonth() + 1}月${now.getDate()}日 · 周${['日', '一', '二', '三', '四', '五', '六'][now.getDay()]}`;
   const todayEvents = sortEvents(state.events.filter((item) => item.date === today));
@@ -401,6 +405,9 @@ function deleteCurrentEvent() {
 }
 
 function openSettings() {
+  $('settingSchoolName').value = state.settings.schoolName || '我的校园';
+  $('settingPortalUrl').value = state.settings.portalUrl || '';
+  $('settingPeriodTimes').value = state.settings.periodTimes || DEFAULT_PERIOD_TIMES;
   $('settingSemesterTitle').value = state.settings.semesterTitle;
   $('settingSemesterStart').value = state.settings.semesterStart;
   $('settingSemesterEnd').value = state.settings.semesterEnd;
@@ -415,6 +422,9 @@ function openSettings() {
 function submitSettings(event) {
   event.preventDefault();
   Object.assign(state.settings, {
+    schoolName: $('settingSchoolName').value.trim() || '我的校园',
+    portalUrl: $('settingPortalUrl').value.trim().replace(/\/$/, ''),
+    periodTimes: $('settingPeriodTimes').value.trim() || DEFAULT_PERIOD_TIMES,
     semesterTitle: $('settingSemesterTitle').value.trim() || state.settings.semesterTitle,
     semesterStart: $('settingSemesterStart').value,
     semesterEnd: $('settingSemesterEnd').value,
@@ -450,36 +460,31 @@ function parseWeeks(raw, totalWeeks) {
 }
 
 function sectionTimes(raw = '') {
-  // 西南大学课表的 1-14 节时间。课程可能是“12-14节”“第12，13，14节”等格式，
-  // 分别取首节的开始时间和末节的结束时间。
-  const table = {
-    1: ['08:00', '08:45'], 2: ['08:55', '09:40'],
-    3: ['10:00', '10:45'], 4: ['10:55', '11:40'],
-    5: ['12:10', '12:55'], 6: ['13:05', '13:50'],
-    7: ['14:00', '14:45'], 8: ['14:55', '15:40'],
-    9: ['15:50', '16:35'], 10: ['16:55', '17:40'],
-    11: ['17:50', '18:35'], 12: ['19:20', '20:05'],
-    13: ['20:15', '21:00'], 14: ['21:10', '21:55']
-  };
+  const configured = String(state.settings.periodTimes || DEFAULT_PERIOD_TIMES).split(/[,，\n]/).map((item) => item.trim().match(/^(\d{1,2}:\d{2})\s*[-~—至]\s*(\d{1,2}:\d{2})$/)).filter(Boolean);
+  const fallback = DEFAULT_PERIOD_TIMES.split(',').map((item) => item.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/));
+  const schedule = configured.length ? configured : fallback;
   const sections = (String(raw).match(/\d+/g) || ['1']).map(Number);
-  const first = Math.max(1, Math.min(14, sections[0] || 1));
-  const last = Math.max(first, Math.min(14, sections[sections.length - 1] || first));
-  return [table[first]?.[0] || table[1][0], table[last]?.[1] || table[2][1]];
+  const first = Math.max(1, Math.min(schedule.length, sections[0] || 1));
+  const last = Math.max(first, Math.min(schedule.length, sections[sections.length - 1] || first));
+  return [schedule[first - 1]?.[1] || '08:00', schedule[last - 1]?.[2] || '09:40'];
 }
 
 function courseToEvents(course, index) {
   const title = course.title || course.kcmc || '未命名课程';
   const teacher = course.teacher || course.xm || '';
   const location = course.place || course.cdmc || '';
-  const sessions = course.sessions || course.jc || '1-2节';
-  const [startTime, endTime] = sectionTimes(sessions);
-  if (course.date) return [{ id: `course-${course.id || course.course_id || index}-${course.date}`, title, teacher, location, date: course.date, startTime, endTime, category: '课程', notes: sessions, color: '#176b55', source: 'course' }];
+  const providedSessions = course.sessions || course.jc || '';
+  const hasExactTimes = !providedSessions && /^\d{1,2}:\d{2}$/.test(course.startTime || '') && /^\d{1,2}:\d{2}$/.test(course.endTime || '');
+  const sessions = providedSessions || (hasExactTimes ? '' : '1-2节');
+  const inferredTimes = sectionTimes(sessions);
+  const [startTime, endTime] = hasExactTimes ? [course.startTime, course.endTime] : inferredTimes;
+  if (course.date) return [{ id: `course-${course.id || course.course_id || index}-${course.date}`, title, teacher, location, date: course.date, startTime, endTime, category: '课程', notes: sessions || `${startTime}-${endTime}`, color: '#176b55', source: 'course' }];
   const weekday = Math.max(1, Math.min(7, Number(course.weekday || course.xqj || 1)));
   const firstMonday = mondayOf(fromDateKey(state.settings.semesterStart));
   return parseWeeks(course.weeks || course.zcd, Number(state.settings.totalWeeks)).map((week) => ({
     id: `course-${course.id || course.course_id || index}-${week}`,
     title, teacher, location, date: toDateKey(addDays(firstMonday, (week - 1) * 7 + weekday - 1)), startTime, endTime,
-    category: '课程', notes: `第${week}周 · ${sessions}`, color: '#176b55', source: 'course', completed: false
+    category: '课程', notes: `第${week}周 · ${sessions || `${startTime}-${endTime}`}`, color: '#176b55', source: 'course', completed: false
   }));
 }
 
@@ -491,15 +496,23 @@ function replaceCourses(courses) {
   renderAll();
 }
 
-function openSync() { state.importFile = null; $('scheduleFile').value = ''; $('scheduleFileName').textContent = '尚未选择文件'; $('syncDialog').showModal(); }
+function openSync() {
+  state.importFile = null;
+  $('scheduleFile').value = '';
+  $('scheduleFileName').textContent = '尚未选择文件';
+  const link = $('campusPortalLink');
+  link.classList.toggle('hidden', !state.settings.portalUrl);
+  if (state.settings.portalUrl) { link.href = state.settings.portalUrl; link.textContent = `↗ 打开 ${state.settings.schoolName || '学校'} 教务系统`; }
+  $('syncDialog').showModal();
+}
 
 async function importPdfWithAi() {
-  if (!state.importFile) { showToast('请先选择教务系统导出的 PDF'); return; }
+  if (!state.importFile) { showToast('请先选择学校教务系统导出的 PDF'); return; }
   if (!state.settings.aiServiceUrl) { showToast('请先在日历设置中填写智能解析服务地址'); return; }
   const button = $('aiImport');
   button.disabled = true; button.textContent = '正在由模型解析…';
   try {
-    const formData = new FormData(); formData.append('schedule', state.importFile);
+    const formData = new FormData(); formData.append('schedule', state.importFile); formData.append('schoolName', state.settings.schoolName || '');
     const response = await fetch(state.settings.aiServiceUrl, { method: 'POST', body: formData });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body?.error || '模型未返回有效课程');
@@ -530,7 +543,7 @@ function deleteAccount() { if (!state.editingAccountId || !confirm('确定删除
 
 function exportAccounts() {
   const lines = ['类型,金额,分类,日期,备注', ...state.accounts.map((item) => `${item.type === 'income' ? '收入' : '支出'},${item.amount},${item.category},${item.date},"${String(item.note || '').replaceAll('"', '""')}"`)]
-  download(`swu-campus-accounts-${today}.csv`, '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8'); showToast('账本已导出')
+  download(`campus-accounts-${today}.csv`, '\uFEFF' + lines.join('\n'), 'text/csv;charset=utf-8'); showToast('账本已导出')
 }
 
 function resetTimer(mode = state.timer.mode) {
@@ -623,8 +636,8 @@ function download(name, content, type) {
 function exportIcs() {
   const escapeIcs = (value = '') => String(value).replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n');
   const stamp = (date, time) => `${date.replaceAll('-', '')}T${time.replace(':', '')}00`;
-  const body = state.events.map((item) => ['BEGIN:VEVENT', `UID:${item.id}@swu-calendar`, `DTSTART:${stamp(item.date, item.startTime)}`, `DTEND:${stamp(item.date, item.endTime)}`, `SUMMARY:${escapeIcs(item.title)}`, `LOCATION:${escapeIcs(item.location)}`, `DESCRIPTION:${escapeIcs(item.notes)}`, 'END:VEVENT'].join('\r\n')).join('\r\n');
-  download('swu-campus-calendar.ics', `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//SWU Campus Calendar//CN\r\n${body}\r\nEND:VCALENDAR`, 'text/calendar;charset=utf-8');
+  const body = state.events.map((item) => ['BEGIN:VEVENT', `UID:${item.id}@campus-calendar`, `DTSTART:${stamp(item.date, item.startTime)}`, `DTEND:${stamp(item.date, item.endTime)}`, `SUMMARY:${escapeIcs(item.title)}`, `LOCATION:${escapeIcs(item.location)}`, `DESCRIPTION:${escapeIcs(item.notes)}`, 'END:VEVENT'].join('\r\n')).join('\r\n');
+  download('campus-calendar.ics', `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Campus Calendar//CN\r\n${body}\r\nEND:VCALENDAR`, 'text/calendar;charset=utf-8');
   showToast('ICS 日历已导出');
 }
 
@@ -649,7 +662,7 @@ function bindEvents() {
   $('settingOpacity').addEventListener('input', (event) => { state.settings.opacity = Number(event.target.value); applyAppearance(); });
   $('wallpaperFile').addEventListener('change', async (event) => { const file = event.target.files[0]; if (!file) return; try { state.settings.customWallpaper = await compressWallpaper(file); state.settings.wallpaper = 'custom'; save(); applyAppearance(); showToast('自定义壁纸已应用'); } catch { showToast('壁纸处理失败，请换一张图片'); } });
   $('exportIcs').addEventListener('click', exportIcs);
-  $('exportBackup').addEventListener('click', () => { download(`swu-calendar-backup-${today}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), settings: { ...state.settings, customWallpaper: '' }, events: state.events }, null, 2), 'application/json;charset=utf-8'); showToast('备份文件已导出'); });
+  $('exportBackup').addEventListener('click', () => { download(`campus-calendar-backup-${today}.json`, JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), settings: { ...state.settings, customWallpaper: '' }, events: state.events }, null, 2), 'application/json;charset=utf-8'); showToast('备份文件已导出'); });
   $('syncOpen').addEventListener('click', openSync);
   $('scheduleFile').addEventListener('change', (event) => {
     const file = event.target.files[0];

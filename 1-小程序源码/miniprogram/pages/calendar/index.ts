@@ -16,6 +16,9 @@ interface CalendarEvent {
 }
 
 interface Settings {
+  schoolName: string
+  portalUrl: string
+  periodTimes: string
   semesterTitle: string
   semesterStart: string
   semesterEnd: string
@@ -46,6 +49,8 @@ interface CourseLike {
   weeks?: string | number[]
   zcd?: string
   date?: string
+  startTime?: string
+  endTime?: string
 }
 
 const STORAGE_EVENTS = 'swu-calendar-events-v2'
@@ -55,6 +60,7 @@ const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
 const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
 const CLOUD_SERVICE_NAME = 'swu-calendar-ai'
 let timerId: number | undefined
+const DEFAULT_PERIOD_TIMES = '08:00-08:45,08:55-09:40,10:00-10:45,10:55-11:40,12:10-12:55,13:05-13:50,14:00-14:45,14:55-15:40,15:50-16:35,16:55-17:40,17:50-18:35,19:20-20:05,20:15-21:00,21:10-21:55'
 
 const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
   ;(wx.cloud as any).callContainer({
@@ -128,6 +134,9 @@ const defaultSettings = (): Settings => {
   const firstTerm = now.getMonth() >= 7
   const startYear = firstTerm ? now.getFullYear() : now.getFullYear() - 1
   return {
+    schoolName: '我的校园',
+    portalUrl: '',
+    periodTimes: DEFAULT_PERIOD_TIMES,
     semesterTitle: `${startYear}-${startYear + 1}-${firstTerm ? 1 : 2}`,
     semesterStart: firstTerm ? `${startYear}-09-07` : `${startYear + 1}-02-23`,
     semesterEnd: firstTerm ? `${startYear + 1}-01-17` : `${startYear + 1}-07-05`,
@@ -171,30 +180,27 @@ const parseWeeks = (raw: string | number[] | undefined, totalWeeks: number) => {
   return result.size ? Array.from(result) : Array.from({ length: totalWeeks }, (_, index) => index + 1)
 }
 
-const timeFromSessions = (raw = '') => {
-  // 西南大学课表的 1-14 节时间。课程可能是“12-14节”“第12，13，14节”等格式，
-  // 因此需要分别取首节的开始时间和末节的结束时间，不能只按奇数节匹配。
-  const table: Record<number, [string, string]> = {
-    1: ['08:00', '08:45'], 2: ['08:55', '09:40'],
-    3: ['10:00', '10:45'], 4: ['10:55', '11:40'],
-    5: ['12:10', '12:55'], 6: ['13:05', '13:50'],
-    7: ['14:00', '14:45'], 8: ['14:55', '15:40'],
-    9: ['15:50', '16:35'], 10: ['16:55', '17:40'],
-    11: ['17:50', '18:35'], 12: ['19:20', '20:05'],
-    13: ['20:15', '21:00'], 14: ['21:10', '21:55']
-  }
+const timeFromSessions = (raw = '', configured = DEFAULT_PERIOD_TIMES) => {
+  const pairs = String(configured || DEFAULT_PERIOD_TIMES).split(/[,，\n]/).map((item) => item.trim().match(/^(\d{1,2}:\d{2})\s*[-~—至]\s*(\d{1,2}:\d{2})$/)).filter(Boolean)
+  const fallbackPairs = DEFAULT_PERIOD_TIMES.split(',').map((item) => item.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/))
+  const schedule = pairs.length ? pairs : fallbackPairs
   const sections = (String(raw).match(/\d+/g) || ['1']).map(Number)
-  const first = Math.max(1, Math.min(14, sections[0] || 1))
-  const last = Math.max(first, Math.min(14, sections[sections.length - 1] || first))
-  return [table[first]?.[0] || table[1][0], table[last]?.[1] || table[2][1]]
+  const first = Math.max(1, Math.min(schedule.length, sections[0] || 1))
+  const last = Math.max(first, Math.min(schedule.length, sections[sections.length - 1] || first))
+  return [schedule[first - 1]?.[1] || '08:00', schedule[last - 1]?.[2] || '09:40']
 }
 
 const courseToEvents = (course: CourseLike, settings: Settings, courseIndex: number): CalendarEvent[] => {
   const title = course.title || course.kcmc || '未命名课程'
   const teacher = course.teacher || course.xm || ''
   const location = course.place || course.cdmc || ''
-  const sessions = course.sessions || course.jc || '1-2节'
-  const times = timeFromSessions(sessions)
+  const providedSessions = course.sessions || course.jc || ''
+  const hasExactTimes = !providedSessions && /^\d{1,2}:\d{2}$/.test(course.startTime || '') && /^\d{1,2}:\d{2}$/.test(course.endTime || '')
+  const sessions = providedSessions || (hasExactTimes ? '' : '1-2节')
+  const inferredTimes = timeFromSessions(sessions, settings.periodTimes)
+  const times = hasExactTimes
+    ? [String(course.startTime), String(course.endTime)]
+    : inferredTimes
   if (course.date) {
     return [{
       id: `course-${course.id || course.course_id || courseIndex}-${course.date}`,
@@ -204,7 +210,7 @@ const courseToEvents = (course: CourseLike, settings: Settings, courseIndex: num
       endTime: times[1],
       category: '课程',
       location,
-      notes: sessions,
+      notes: sessions || `${times[0]}-${times[1]}`,
       color: '#176b55',
       source: 'course',
       teacher
@@ -227,7 +233,7 @@ const courseToEvents = (course: CourseLike, settings: Settings, courseIndex: num
       endTime: times[1],
       category: '课程',
       location,
-      notes: `第${week}周 · ${sessions}`,
+      notes: `第${week}周 · ${sessions || `${times[0]}-${times[1]}`}`,
       color: '#176b55',
       source: 'course' as EventSource,
       teacher
@@ -660,6 +666,9 @@ Page({
   saveSettings() {
     const settings = {
       ...this.data.settings,
+      schoolName: String(this.data.settings.schoolName || '').trim() || '我的校园',
+      portalUrl: String(this.data.settings.portalUrl || '').trim().replace(/\/$/, ''),
+      periodTimes: String(this.data.settings.periodTimes || '').trim() || DEFAULT_PERIOD_TIMES,
       totalWeeks: Math.max(1, Number(this.data.settings.totalWeeks || 19)),
       focusMinutes: Math.max(1, Number(this.data.settings.focusMinutes || 25)),
       breakMinutes: Math.max(1, Number(this.data.settings.breakMinutes || 5)),
@@ -778,7 +787,11 @@ Page({
 
   openSync() { this.setData({ syncVisible: true }) },
   closeSync() { this.setData({ syncVisible: false }) },
-  openJw() { wx.setClipboardData({ data: 'https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/' }); wx.showToast({ title: '办事大厅网址已复制', icon: 'none' }) },
+  openPortal() {
+    const url = String(this.data.settings.portalUrl || '').trim()
+    if (!url) { wx.showToast({ title: '请先在设置中填写教务入口', icon: 'none' }); return }
+    wx.setClipboardData({ data: url })
+  },
 
   chooseScheduleFile() {
     wx.chooseMessageFile({ count: 1, type: 'file', success: async (result) => {
@@ -795,7 +808,7 @@ Page({
         if (!fileData) throw new Error('无法读取课表文件，请重新选择')
 
         wx.showLoading({ title: '正在创建任务', mask: true })
-        const created = await callScheduleService('/api/schedule/jobs-base64', 'POST', { fileData, fileName: file.name || 'schedule.pdf', clientRequestId })
+        const created = await callScheduleService('/api/schedule/jobs-base64', 'POST', { fileData, fileName: file.name || 'schedule.pdf', clientRequestId, schoolName: this.data.settings.schoolName })
         if (!created.jobId) throw new Error('解析任务创建失败，请稍后重试')
 
         wx.showLoading({ title: '模型解析中', mask: true })

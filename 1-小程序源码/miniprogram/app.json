@@ -1,6 +1,6 @@
 {
   "pages": [
-    "pages/calendar/swu"
+    "pages/calendar/index"
   ],
   "window": {
     "backgroundTextStyle": "dark",

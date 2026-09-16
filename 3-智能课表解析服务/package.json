@@ -1,10 +1,11 @@
 {
-  "name": "swu-schedule-ai-parser",
+  "name": "campus-schedule-ai-parser",
   "private": true,
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "test": "node --test test/*.test.cjs"
   },
   "dependencies": {
     "@cloudbase/node-sdk": "^3.18.3",
