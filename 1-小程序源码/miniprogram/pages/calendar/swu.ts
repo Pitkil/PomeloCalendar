@@ -284,7 +284,7 @@ Page({
       { name: '暮色自习', value: 'night' }
     ],
     focus: {
-      mode: 'focus', running: false, durationSeconds: 1500, secondsLeft: 1500,
+      kind: 'countdown', mode: 'focus', running: false, durationSeconds: 1500, secondsLeft: 1500,
       display: '25:00', taskTitle: '', roundsToday: 0, focusedMinutesToday: 0
     },
     syncStatus: '尚未导入课表',
@@ -295,6 +295,9 @@ Page({
     accountTypeOptions: ['支出', '收入'],
     monthExpense: '¥0.00', monthIncome: '¥0.00', monthBalance: '¥0.00',
     categoryStats: [] as any[],
+    recentFocusRecords: [] as CalendarEvent[],
+    studyStats: { today: 0, week: 0, average: 0, hasData: false, days: [] as any[] },
+    financeStats: { income: '0.00', expense: '0.00', balance: '0.00', hasData: false, months: [] as any[] },
     stats: { todayCount: 0, completed: 0, focusMinutes: 0 }
   },
 
@@ -306,12 +309,9 @@ Page({
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
     const savedAccounts = wx.getStorageSync(STORAGE_ACCOUNTS) as AccountEntry[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
-    const initialEvents: CalendarEvent[] = savedEvents && savedEvents.length ? savedEvents : [
-      {
-        id: makeId('welcome'), title: '完成校园日历实验', date: todayKey, startTime: '19:00', endTime: '20:30',
-        category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal'
-      }
-    ]
+    const initialEvents: CalendarEvent[] = Array.isArray(savedEvents)
+      ? savedEvents.filter((item) => !(item.id?.startsWith('welcome-') && item.title === '完成校园日历实验' && item.notes === '体验新增、编辑、搜索和番茄钟。'))
+      : []
     const focusSeconds = settings.focusMinutes * 60
     this.setData({
       todayKey,
@@ -435,6 +435,33 @@ Page({
     const categoryTotals: Record<string, number> = {}
     monthAccounts.filter((item) => item.type === 'expense').forEach((item) => { categoryTotals[item.category] = (categoryTotals[item.category] || 0) + Number(item.amount) })
     const categoryStats = Object.keys(categoryTotals).map((name) => ({ name, amount: categoryTotals[name].toFixed(2), percent: Math.min(100, categoryTotals[name] / Math.max(monthExpense, 1) * 100) })).sort((a, b) => Number(b.amount) - Number(a.amount))
+    const focusEvents = events.filter((item) => item.source === 'focus')
+    const focusMinutesOf = (item: CalendarEvent) => {
+      const noted = Number((item.notes || '').match(/(\d+)\s*分钟/)?.[1] || 0)
+      const timed = minutesOf(item.endTime) - minutesOf(item.startTime)
+      return Math.max(1, noted || timed || 1)
+    }
+    const lastSeven = Array.from({ length: 7 }, (_, index) => {
+      const date = addDays(fromDateKey(this.data.todayKey), index - 6)
+      const key = toDateKey(date)
+      const minutes = focusEvents.filter((item) => item.date === key).reduce((sum, item) => sum + focusMinutesOf(item), 0)
+      return { key, label: ['日', '一', '二', '三', '四', '五', '六'][date.getDay()], minutes }
+    })
+    const weekMinutes = lastSeven.reduce((sum, item) => sum + item.minutes, 0)
+    const maxStudy = Math.max(1, ...lastSeven.map((item) => item.minutes))
+    const studyDays = lastSeven.map((item) => ({ ...item, height: Math.max(item.minutes ? 10 : 2, Math.round(item.minutes / maxStudy * 100)) }))
+    const monthSeries = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date(fromDateKey(this.data.todayKey).getFullYear(), fromDateKey(this.data.todayKey).getMonth() + index - 5, 1)
+      const prefix = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+      const rows = (this.data.accounts as AccountEntry[]).filter((item) => item.date.startsWith(prefix))
+      return {
+        key: prefix, label: `${date.getMonth() + 1}月`,
+        income: rows.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0),
+        expense: rows.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0)
+      }
+    })
+    const maxMoney = Math.max(1, ...monthSeries.flatMap((item) => [item.income, item.expense]))
+    const financeMonths = monthSeries.map((item) => ({ ...item, incomeHeight: Math.max(item.income ? 8 : 2, Math.round(item.income / maxMoney * 100)), expenseHeight: Math.max(item.expense ? 8 : 2, Math.round(item.expense / maxMoney * 100)) }))
     this.setData({
       monthTitle: `${this.data.year}年${this.data.month}月`,
       selectedLabel: `${selected.getMonth() + 1}月${selected.getDate()}日 · 周${['日', '一', '二', '三', '四', '五', '六'][selected.getDay()]}`,
@@ -446,6 +473,9 @@ Page({
       stats,
       monthAccounts,
       categoryStats,
+      recentFocusRecords: focusEvents.slice().sort((a, b) => `${b.date}${b.endTime}`.localeCompare(`${a.date}${a.endTime}`)).slice(0, 4),
+      studyStats: { today: lastSeven[6].minutes, week: weekMinutes, average: Math.round(weekMinutes / 7), hasData: weekMinutes > 0, days: studyDays },
+      financeStats: { income: monthIncome.toFixed(2), expense: monthExpense.toFixed(2), balance: (monthIncome - monthExpense).toFixed(2), hasData: monthSeries.some((item) => item.income > 0 || item.expense > 0), months: financeMonths },
       monthExpense: `¥${monthExpense.toFixed(2)}`,
       monthIncome: `¥${monthIncome.toFixed(2)}`,
       monthBalance: `¥${(monthIncome - monthExpense).toFixed(2)}`
@@ -651,6 +681,14 @@ Page({
 
   onFocusTaskInput(event: any) { this.setData({ 'focus.taskTitle': event.detail.value }) },
 
+  switchTimerKind(event: any) {
+    if (timerId !== undefined) clearInterval(timerId)
+    timerId = undefined
+    const kind = String(event.currentTarget.dataset.kind)
+    const seconds = kind === 'stopwatch' ? 0 : this.data.settings.focusMinutes * 60
+    this.setData({ focus: { ...this.data.focus, kind, mode: 'focus', running: false, durationSeconds: seconds, secondsLeft: seconds, display: this.formatSeconds(seconds) } })
+  },
+
   onFocusDurationChange(event: any) {
     const kind = String(event.currentTarget.dataset.kind)
     const max = kind === 'focus' ? 180 : 60
@@ -671,8 +709,9 @@ Page({
     }
     this.setData({ 'focus.running': true })
     timerId = setInterval(() => {
-      const next = Number(this.data.focus.secondsLeft) - 1
-      if (next <= 0) {
+      const stopwatch = this.data.focus.kind === 'stopwatch'
+      const next = Number(this.data.focus.secondsLeft) + (stopwatch ? 1 : -1)
+      if (!stopwatch && next <= 0) {
         if (timerId !== undefined) clearInterval(timerId)
         timerId = undefined
         this.finishFocusRound()
@@ -685,13 +724,14 @@ Page({
   resetTimer() {
     if (timerId !== undefined) clearInterval(timerId)
     timerId = undefined
-    const seconds = this.data.focus.mode === 'focus' ? this.data.settings.focusMinutes * 60 : this.data.settings.breakMinutes * 60
+    const seconds = this.data.focus.kind === 'stopwatch' ? 0 : (this.data.focus.mode === 'focus' ? this.data.settings.focusMinutes * 60 : this.data.settings.breakMinutes * 60)
     this.setData({ 'focus.running': false, 'focus.secondsLeft': seconds, 'focus.durationSeconds': seconds, 'focus.display': this.formatSeconds(seconds) })
   },
 
   switchFocusMode(event: any) {
     if (timerId !== undefined) clearInterval(timerId)
     timerId = undefined
+    if (this.data.focus.kind === 'stopwatch') return
     const mode = String(event.currentTarget.dataset.mode)
     const seconds = (mode === 'focus' ? this.data.settings.focusMinutes : this.data.settings.breakMinutes) * 60
     this.setData({
@@ -700,6 +740,13 @@ Page({
   },
 
   finishFocusRound() {
+    if (timerId !== undefined) clearInterval(timerId)
+    timerId = undefined
+    const stopwatch = this.data.focus.kind === 'stopwatch'
+    if (stopwatch && Number(this.data.focus.secondsLeft) <= 0) {
+      wx.showToast({ title: '请先开始计时', icon: 'none' })
+      return
+    }
     const isFocus = this.data.focus.mode === 'focus'
     if (!isFocus) {
       const seconds = this.data.settings.focusMinutes * 60
@@ -707,26 +754,26 @@ Page({
       wx.showToast({ title: '休息结束，继续加油', icon: 'none' })
       return
     }
-    const minutes = this.data.settings.focusMinutes
+    const minutes = stopwatch ? Math.max(1, Math.round(Number(this.data.focus.secondsLeft) / 60)) : this.data.settings.focusMinutes
     const rounds = Number(this.data.focus.roundsToday) + 1
     const total = Number(this.data.focus.focusedMinutesToday) + minutes
     const now = new Date()
     const endTime = `${pad(now.getHours())}:${pad(now.getMinutes())}`
     const start = new Date(now.getTime() - minutes * 60000)
     const focusEvent: CalendarEvent = {
-      id: makeId('focus'), title: this.data.focus.taskTitle || '专注时间', date: this.data.todayKey,
+      id: makeId('focus'), title: this.data.focus.taskTitle || (stopwatch ? '学习任务' : '专注时间'), date: this.data.todayKey,
       startTime: `${pad(start.getHours())}:${pad(start.getMinutes())}`, endTime, category: '学习', location: '',
-      notes: `完成 ${minutes} 分钟番茄钟`, color: '#c9573e', source: 'focus', completed: true
+      notes: `${stopwatch ? '正计时学习' : '倒计时专注'} ${minutes} 分钟`, color: '#c9573e', source: 'focus', completed: true
     }
-    const breakSeconds = this.data.settings.breakMinutes * 60
+    const breakSeconds = stopwatch ? 0 : this.data.settings.breakMinutes * 60
     this.setData({
       events: sortEvents([...(this.data.events as CalendarEvent[]), focusEvent]),
-      focus: { ...this.data.focus, mode: 'break', running: false, roundsToday: rounds, focusedMinutesToday: total, durationSeconds: breakSeconds, secondsLeft: breakSeconds, display: this.formatSeconds(breakSeconds) }
+      focus: { ...this.data.focus, mode: stopwatch ? 'focus' : 'break', running: false, roundsToday: rounds, focusedMinutesToday: total, durationSeconds: breakSeconds, secondsLeft: breakSeconds, display: this.formatSeconds(breakSeconds) }
     })
     wx.setStorageSync(STORAGE_FOCUS, { date: this.data.todayKey, rounds, minutes: total })
     this.persist()
     this.refreshView()
-    wx.showModal({ title: '完成一个番茄钟', content: `已专注 ${minutes} 分钟，休息一下吧。`, showCancel: false })
+    wx.showModal({ title: '学习记录已保存', content: `已记录 ${minutes} 分钟${stopwatch ? '学习' : '专注'}。`, showCancel: false })
   },
 
   openSync() { this.setData({ syncVisible: true }) },

@@ -43,8 +43,9 @@
     <view class="mode-switch paper-card">
       <view class="mode {{viewMode === 'month' ? 'active' : ''}}" data-mode="month" bindtap="switchView">月历</view>
       <view class="mode {{viewMode === 'week' ? 'active' : ''}}" data-mode="week" bindtap="switchView">周课表</view>
-      <view class="mode {{viewMode === 'focus' ? 'active tomato-active' : ''}}" data-mode="focus" bindtap="switchView">番茄钟</view>
+      <view class="mode {{viewMode === 'focus' ? 'active tomato-active' : ''}}" data-mode="focus" bindtap="switchView">计时</view>
       <view class="mode {{viewMode === 'accounting' ? 'active' : ''}}" data-mode="accounting" bindtap="switchView">记账</view>
+      <view class="mode {{viewMode === 'stats' ? 'active' : ''}}" data-mode="stats" bindtap="switchView">统计</view>
     </view>
 
     <view wx:if="{{viewMode === 'month'}}" class="calendar paper-card">
@@ -107,24 +108,34 @@
     </view>
 
     <view wx:if="{{viewMode === 'focus'}}" class="focus-card paper-card">
+      <view class="timer-kind-row">
+        <view class="timer-kind {{focus.kind === 'countdown' ? 'active' : ''}}" data-kind="countdown" bindtap="switchTimerKind">倒计时</view>
+        <view class="timer-kind {{focus.kind === 'stopwatch' ? 'active' : ''}}" data-kind="stopwatch" bindtap="switchTimerKind">正计时</view>
+      </view>
       <view class="focus-orbit">
         <view class="focus-ring">
-          <text class="focus-kicker">{{focus.mode === 'focus' ? '专注中' : '休息一下'}}</text>
+          <text class="focus-kicker">{{focus.kind === 'stopwatch' ? '学习计时' : (focus.mode === 'focus' ? '专注中' : '休息一下')}}</text>
           <text class="focus-time">{{focus.display}}</text>
           <text class="focus-round">今日第 {{focus.roundsToday + 1}} 轮</text>
         </view>
       </view>
-      <view class="focus-mode-row">
+      <view wx:if="{{focus.kind === 'countdown'}}" class="focus-mode-row">
         <view class="focus-chip {{focus.mode === 'focus' ? 'active' : ''}}" data-mode="focus" bindtap="switchFocusMode">专注 {{settings.focusMinutes}} 分钟</view>
         <view class="focus-chip {{focus.mode === 'break' ? 'active' : ''}}" data-mode="break" bindtap="switchFocusMode">休息 {{settings.breakMinutes}} 分钟</view>
       </view>
-      <view class="focus-duration-row"><label>专注<input type="number" value="{{settings.focusMinutes}}" data-kind="focus" bindchange="onFocusDurationChange" />分钟</label><label>休息<input type="number" value="{{settings.breakMinutes}}" data-kind="break" bindchange="onFocusDurationChange" />分钟</label></view>
-      <input class="focus-task" value="{{focus.taskTitle}}" bindinput="onFocusTaskInput" placeholder="这次想专注完成什么？" />
+      <view wx:if="{{focus.kind === 'countdown'}}" class="focus-duration-row"><label>专注<input type="number" value="{{settings.focusMinutes}}" data-kind="focus" bindchange="onFocusDurationChange" />分钟</label><label>休息<input type="number" value="{{settings.breakMinutes}}" data-kind="break" bindchange="onFocusDurationChange" />分钟</label></view>
+      <input class="focus-task" value="{{focus.taskTitle}}" bindinput="onFocusTaskInput" placeholder="这次学习任务是什么？" />
       <view class="focus-actions">
         <view class="secondary-button" bindtap="resetTimer" role="button">重置</view>
-        <view class="primary-button tomato-button" bindtap="toggleTimer" role="button">{{focus.running ? '暂停' : '开始专注'}}</view>
+        <view class="primary-button tomato-button" bindtap="toggleTimer" role="button">{{focus.running ? '暂停' : (focus.kind === 'stopwatch' ? '开始计时' : (focus.mode === 'focus' ? '开始专注' : '开始休息'))}}</view>
+        <view wx:if="{{focus.kind === 'stopwatch' && focus.secondsLeft > 0}}" class="secondary-button finish-button" bindtap="finishFocusRound" role="button">完成</view>
       </view>
-      <view class="focus-note">完成后会自动生成一条专注记录，出现在今天的日历中。</view>
+      <view class="focus-note">完成的任务会保存为学习记录，并出现在今天的日历和统计中。</view>
+      <view class="recent-focus">
+        <view class="section-heading"><text class="month-title">最近学习</text><text class="muted small">{{recentFocusRecords.length}} 条</text></view>
+        <view wx:if="{{!recentFocusRecords.length}}" class="empty-state compact-empty"><view class="empty-title">还没有学习记录</view><view class="muted">输入任务后开始第一次计时吧。</view></view>
+        <view wx:for="{{recentFocusRecords}}" wx:key="id" class="recent-focus-row"><view><text>{{item.title}}</text><text class="muted small">{{item.date}} · {{item.startTime}}-{{item.endTime}}</text></view><text class="record-note">{{item.notes}}</text></view>
+      </view>
     </view>
 
     <view wx:if="{{viewMode === 'accounting'}}" class="accounting-card paper-card">
@@ -135,7 +146,23 @@
       <view wx:for="{{monthAccounts}}" wx:key="id" class="ledger-row" data-id="{{item.id}}" bindtap="openAccount"><view class="ledger-mark {{item.type}}">{{item.type === 'income' ? '↑' : '↓'}}</view><view><text>{{item.category}}</text><text class="muted small">{{item.date}}{{item.note ? ' · ' + item.note : ''}}</text></view><text class="ledger-amount {{item.type}}">{{item.type === 'income' ? '+' : '-'}}¥{{item.amount}}</text></view>
     </view>
 
-    <view wx:if="{{viewMode !== 'focus'}}" class="agenda paper-card">
+    <view wx:if="{{viewMode === 'stats'}}" class="stats-page">
+      <view class="stats-card paper-card">
+        <view class="section-heading"><view><text class="month-title">学习时间</text><text class="muted small">最近 7 天</text></view></view>
+        <view class="metric-row"><view><text class="metric-value">{{studyStats.today}}</text><text>今日分钟</text></view><view><text class="metric-value">{{studyStats.week}}</text><text>七日总计</text></view><view><text class="metric-value">{{studyStats.average}}</text><text>日均分钟</text></view></view>
+        <view wx:if="{{studyStats.hasData}}" class="study-chart"><view wx:for="{{studyStats.days}}" wx:key="key" class="study-column"><view class="bar-value">{{item.minutes || ''}}</view><view class="study-bar" style="height:{{item.height}}%"></view><text>周{{item.label}}</text></view></view>
+        <view wx:else class="empty-state compact-empty"><view class="empty-title">暂无学习数据</view><view class="muted">完成一次计时任务后，这里会生成趋势。</view></view>
+      </view>
+      <view class="stats-card paper-card">
+        <view class="section-heading"><view><text class="month-title">收支趋势</text><text class="muted small">最近 6 个月</text></view></view>
+        <view class="metric-row"><view><text class="metric-value income">¥{{financeStats.income}}</text><text>本月收入</text></view><view><text class="metric-value expense">¥{{financeStats.expense}}</text><text>本月支出</text></view><view><text class="metric-value">¥{{financeStats.balance}}</text><text>本月结余</text></view></view>
+        <view wx:if="{{financeStats.hasData}}" class="money-chart"><view wx:for="{{financeStats.months}}" wx:key="key" class="money-column"><view class="money-bars"><view class="money-bar income" style="height:{{item.incomeHeight}}%"></view><view class="money-bar expense" style="height:{{item.expenseHeight}}%"></view></view><text>{{item.label}}</text></view></view>
+        <view wx:else class="empty-state compact-empty"><view class="empty-title">暂无收支数据</view><view class="muted">记下收入或支出后，这里会显示趋势。</view></view>
+        <view class="chart-legend"><text><i class="income-dot"></i>收入</text><text><i class="expense-dot"></i>支出</text></view>
+      </view>
+    </view>
+
+    <view wx:if="{{viewMode === 'month' || viewMode === 'week'}}" class="agenda paper-card">
       <view class="section-heading">
         <view>
           <view class="month-title">{{selectedLabel}}</view>
@@ -169,7 +196,7 @@
     <view class="footer-note">{{syncStatus}} · 课表、日程与账目仅保存在本机</view>
   </view>
 
-  <view wx:if="{{viewMode !== 'focus'}}" class="fab" bindtap="openAdd" role="button" aria-label="新增日程">＋</view>
+  <view wx:if="{{viewMode === 'month' || viewMode === 'week'}}" class="fab" bindtap="openAdd" role="button" aria-label="新增日程">＋</view>
 
   <view wx:if="{{editorVisible}}" class="modal-mask" bindtap="closeEditor">
     <view class="bottom-sheet" catchtap="noop">

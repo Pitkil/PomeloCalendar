@@ -52,8 +52,9 @@
         <nav class="view-tabs paper-card" aria-label="日历视图">
           <button class="view-tab active" data-view="month">月历</button>
           <button class="view-tab" data-view="week">周课表</button>
-          <button class="view-tab tomato-tab" data-view="focus">番茄钟</button>
+          <button class="view-tab tomato-tab" data-view="focus">计时任务</button>
           <button class="view-tab" data-view="accounting">记账</button>
+          <button class="view-tab" data-view="stats">统计</button>
         </nav>
 
         <section class="search-results paper-card hidden" id="searchResultsSection">
@@ -89,20 +90,21 @@
 
         <section class="focus-panel paper-card hidden" id="focusView">
           <div class="focus-copy">
-            <span class="micro-label tomato-ink">FOCUS SESSION</span>
-            <h2>把一件事，安静地做完。</h2>
-            <p>专注结束后，会自动在今天的日历中留下记录。</p>
-            <input id="focusTask" placeholder="这次想专注完成什么？" maxlength="60">
-            <div class="focus-switch">
+            <span class="micro-label tomato-ink">TIMED TASK</span>
+            <h2>让每一段投入，都有迹可循。</h2>
+            <p>倒计时适合番茄工作法，正计时适合开放式学习任务。完成后都会留下学习记录。</p>
+            <div class="timer-kind-switch"><button class="active" data-timer-kind="countdown">倒计时</button><button data-timer-kind="stopwatch">正计时</button></div>
+            <input id="focusTask" placeholder="这次学习任务是什么？" maxlength="60">
+            <div class="focus-switch" id="focusModeSwitch">
               <button class="active" data-focus-mode="focus">专注 <span id="focusLengthLabel">25</span> 分钟</button>
               <button data-focus-mode="break">休息 <span id="breakLengthLabel">5</span> 分钟</button>
             </div>
-            <div class="focus-duration-controls" aria-label="番茄钟时长设置">
+            <div class="focus-duration-controls" id="focusDurationControls" aria-label="倒计时时长设置">
               <label>专注 <input id="focusDurationFocus" type="number" min="1" max="180" value="25"> 分钟</label>
               <label>休息 <input id="focusDurationBreak" type="number" min="1" max="60" value="5"> 分钟</label>
             </div>
           </div>
-          <div class="timer-wrap">
+          <div class="focus-side"><div class="timer-wrap">
             <div class="timer-ring" id="timerRing">
               <span id="timerMode">专注时间</span>
               <strong id="timerDisplay">25:00</strong>
@@ -111,8 +113,9 @@
             <div class="timer-actions">
               <button class="quiet-button" id="timerReset">重置</button>
               <button class="tomato-button" id="timerToggle">开始专注</button>
+              <button class="quiet-button hidden" id="timerFinish">完成并记录</button>
             </div>
-          </div>
+          </div><div class="recent-focus-panel"><div class="mini-heading"><strong>最近学习</strong><span id="recentFocusCount">0 条</span></div><div id="recentFocusList"></div></div></div>
         </section>
 
         <section class="accounting-panel paper-card hidden" id="accountingView">
@@ -126,6 +129,20 @@
             <div><span>结余</span><strong id="monthBalance">¥0.00</strong></div>
           </div>
           <div class="accounting-layout"><div id="categoryStats" class="category-stats"></div><div id="ledgerList" class="ledger-list"></div></div>
+        </section>
+
+        <section class="stats-panel hidden" id="statsView">
+          <article class="insight-card paper-card">
+            <div class="section-title-row"><div><span class="micro-label">STUDY RHYTHM</span><h2>学习时间</h2></div><span class="subtle">最近 7 天</span></div>
+            <div class="insight-metrics"><div><strong id="studyToday">0</strong><span>今日分钟</span></div><div><strong id="studyWeek">0</strong><span>七日总计</span></div><div><strong id="studyAverage">0</strong><span>日均分钟</span></div></div>
+            <div class="study-chart" id="studyChart"></div>
+          </article>
+          <article class="insight-card paper-card">
+            <div class="section-title-row"><div><span class="micro-label">MONEY FLOW</span><h2>收支趋势</h2></div><span class="subtle">最近 6 个月</span></div>
+            <div class="insight-metrics money"><div><strong id="statsIncome">¥0.00</strong><span>本月收入</span></div><div><strong id="statsExpense">¥0.00</strong><span>本月支出</span></div><div><strong id="statsBalance">¥0.00</strong><span>本月结余</span></div></div>
+            <div class="finance-chart" id="financeChart"></div>
+            <div class="chart-legend"><span><i class="income"></i>收入</span><span><i class="expense"></i>支出</span></div>
+          </article>
         </section>
 
         <section class="agenda-panel paper-card" id="agendaPanel">

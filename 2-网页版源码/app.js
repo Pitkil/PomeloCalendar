@@ -41,15 +41,12 @@ function defaultSettings() {
 const today = toDateKey(new Date());
 const settings = { ...defaultSettings(), ...loadJson(STORAGE_SETTINGS, {}) };
 if (!settings.aiServiceUrl || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//.test(settings.aiServiceUrl)) settings.aiServiceUrl = AI_SERVICE_URL;
-const initialEvents = [{
-  id: uid('welcome'), title: '完成校园日历实验', date: today, startTime: '19:00', endTime: '20:30',
-  category: '学习', location: '图书馆', notes: '体验新增、编辑、搜索和番茄钟。', color: '#d76a4a', source: 'personal', completed: false
-}];
+const initialEvents = [];
 const focusRecord = loadJson(STORAGE_FOCUS, { date: today, rounds: 0, minutes: 0 });
 
 const state = {
   settings,
-  events: loadJson(STORAGE_EVENTS, initialEvents),
+  events: loadJson(STORAGE_EVENTS, initialEvents).filter((item) => !(item.id?.startsWith('welcome-') && item.title === '完成校园日历实验' && item.notes === '体验新增、编辑、搜索和番茄钟。')),
   accounts: loadJson(STORAGE_ACCOUNTS, []),
   selectedDate: today,
   cursor: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -59,6 +56,7 @@ const state = {
   editingAccountId: '',
   importFile: null,
   timer: {
+    kind: 'countdown',
     mode: 'focus',
     running: false,
     duration: settings.focusMinutes * 60,
@@ -222,8 +220,10 @@ function renderViews() {
   $('weekView').classList.toggle('hidden', state.view !== 'week');
   $('focusView').classList.toggle('hidden', state.view !== 'focus');
   $('accountingView').classList.toggle('hidden', state.view !== 'accounting');
-  $('agendaPanel').classList.toggle('hidden', state.view === 'focus' || state.view === 'accounting');
-  $('floatingAdd').classList.toggle('hidden', state.view === 'focus' || state.view === 'accounting');
+  $('statsView').classList.toggle('hidden', state.view !== 'stats');
+  const utilityView = state.view === 'focus' || state.view === 'accounting' || state.view === 'stats';
+  $('agendaPanel').classList.toggle('hidden', utilityView);
+  $('floatingAdd').classList.toggle('hidden', utilityView);
 }
 
 function renderAccounting() {
@@ -243,16 +243,64 @@ function renderAccounting() {
 function renderTimer() {
   const timer = state.timer;
   $('timerDisplay').textContent = `${pad(Math.floor(timer.left / 60))}:${pad(timer.left % 60)}`;
-  $('timerMode').textContent = timer.mode === 'focus' ? '专注时间' : '休息时间';
-  $('timerToggle').textContent = timer.running ? '暂停' : timer.mode === 'focus' ? '开始专注' : '开始休息';
+  $('timerMode').textContent = timer.kind === 'stopwatch' ? '学习计时' : timer.mode === 'focus' ? '专注时间' : '休息时间';
+  $('timerToggle').textContent = timer.running ? '暂停' : timer.kind === 'stopwatch' ? '开始计时' : timer.mode === 'focus' ? '开始专注' : '开始休息';
   $('roundDisplay').textContent = `今日第 ${timer.rounds + 1} 轮`;
   $('focusLengthLabel').textContent = state.settings.focusMinutes;
   $('breakLengthLabel').textContent = state.settings.breakMinutes;
   $('focusDurationFocus').value = state.settings.focusMinutes;
   $('focusDurationBreak').value = state.settings.breakMinutes;
   document.querySelectorAll('[data-focus-mode]').forEach((button) => button.classList.toggle('active', button.dataset.focusMode === timer.mode));
-  const progress = timer.duration ? (1 - timer.left / timer.duration) * 360 : 0;
+  document.querySelectorAll('[data-timer-kind]').forEach((button) => button.classList.toggle('active', button.dataset.timerKind === timer.kind));
+  $('focusModeSwitch').classList.toggle('hidden', timer.kind === 'stopwatch');
+  $('focusDurationControls').classList.toggle('hidden', timer.kind === 'stopwatch');
+  $('timerFinish').classList.toggle('hidden', timer.kind !== 'stopwatch' || timer.left <= 0);
+  const progress = timer.kind === 'stopwatch' ? (timer.left % 3600) / 3600 * 360 : timer.duration ? (1 - timer.left / timer.duration) * 360 : 0;
   $('timerRing').style.setProperty('--progress', `${progress}deg`);
+  renderRecentFocus();
+}
+
+function focusMinutesOf(item) {
+  const noted = Number(String(item.notes || '').match(/(\d+)\s*分钟/)?.[1] || 0);
+  return Math.max(1, noted || minutesOf(item.endTime) - minutesOf(item.startTime) || 1);
+}
+
+function renderRecentFocus() {
+  const rows = state.events.filter((item) => item.source === 'focus').sort((a, b) => `${b.date}${b.endTime}`.localeCompare(`${a.date}${a.endTime}`)).slice(0, 4);
+  $('recentFocusCount').textContent = `${rows.length} 条`;
+  $('recentFocusList').innerHTML = rows.length ? rows.map((item) => `<div class="recent-focus-row"><div><strong>${escapeHtml(item.title)}</strong><small>${item.date} · ${item.startTime}-${item.endTime}</small></div><span>${escapeHtml(item.notes)}</span></div>`).join('') : '<div class="empty-state compact"><b>还没有学习记录</b><span>输入任务后开始第一次计时吧。</span></div>';
+}
+
+function renderStatistics() {
+  const focusEvents = state.events.filter((item) => item.source === 'focus');
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(fromDateKey(today), index - 6);
+    const key = toDateKey(date);
+    return { key, label: ['日', '一', '二', '三', '四', '五', '六'][date.getDay()], minutes: focusEvents.filter((item) => item.date === key).reduce((sum, item) => sum + focusMinutesOf(item), 0) };
+  });
+  const week = days.reduce((sum, item) => sum + item.minutes, 0);
+  $('studyToday').textContent = days[6].minutes;
+  $('studyWeek').textContent = week;
+  $('studyAverage').textContent = Math.round(week / 7);
+  const studyMax = Math.max(1, ...days.map((item) => item.minutes));
+  $('studyChart').innerHTML = week ? days.map((item) => `<div class="study-column"><span>${item.minutes || ''}</span><i style="height:${Math.max(item.minutes ? 10 : 2, item.minutes / studyMax * 100)}%"></i><small>周${item.label}</small></div>`).join('') : '<div class="empty-state compact"><b>暂无学习数据</b><span>完成一次计时任务后，这里会生成趋势。</span></div>';
+
+  const currentPrefix = today.slice(0, 7);
+  const currentRows = state.accounts.filter((item) => item.date.startsWith(currentPrefix));
+  const income = currentRows.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0);
+  const expense = currentRows.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0);
+  $('statsIncome').textContent = `¥${income.toFixed(2)}`;
+  $('statsExpense').textContent = `¥${expense.toFixed(2)}`;
+  $('statsBalance').textContent = `¥${(income - expense).toFixed(2)}`;
+  const now = fromDateKey(today);
+  const months = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() + index - 5, 1);
+    const prefix = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+    const rows = state.accounts.filter((item) => item.date.startsWith(prefix));
+    return { label: `${date.getMonth() + 1}月`, income: rows.filter((item) => item.type === 'income').reduce((sum, item) => sum + Number(item.amount), 0), expense: rows.filter((item) => item.type === 'expense').reduce((sum, item) => sum + Number(item.amount), 0) };
+  });
+  const moneyMax = Math.max(1, ...months.flatMap((item) => [item.income, item.expense]));
+  $('financeChart').innerHTML = months.some((item) => item.income > 0 || item.expense > 0) ? months.map((item) => `<div class="finance-column"><div><i class="income" style="height:${Math.max(item.income ? 8 : 2, item.income / moneyMax * 100)}%"></i><i class="expense" style="height:${Math.max(item.expense ? 8 : 2, item.expense / moneyMax * 100)}%"></i></div><small>${item.label}</small></div>`).join('') : '<div class="empty-state compact"><b>暂无收支数据</b><span>记下收入或支出后，这里会显示趋势。</span></div>';
 }
 
 function updateFocusDuration(kind, value) {
@@ -275,6 +323,7 @@ function renderAll() {
   renderSearch();
   renderAccounting();
   renderTimer();
+  renderStatistics();
   $('syncStatus').textContent = localStorage.getItem('swu-calendar-sync-status') || '尚未导入课表';
 }
 
@@ -486,9 +535,16 @@ function exportAccounts() {
 
 function resetTimer(mode = state.timer.mode) {
   if (state.timer.handle) clearInterval(state.timer.handle);
-  const duration = (mode === 'focus' ? state.settings.focusMinutes : state.settings.breakMinutes) * 60;
+  const duration = state.timer.kind === 'stopwatch' ? 0 : (mode === 'focus' ? state.settings.focusMinutes : state.settings.breakMinutes) * 60;
   Object.assign(state.timer, { mode, running: false, duration, left: duration, handle: null });
   renderTimer();
+}
+
+function setTimerKind(kind) {
+  if (state.timer.handle) clearInterval(state.timer.handle);
+  state.timer.kind = kind;
+  state.timer.mode = 'focus';
+  resetTimer('focus');
 }
 
 function toggleTimer() {
@@ -501,8 +557,8 @@ function toggleTimer() {
   }
   state.timer.running = true;
   state.timer.handle = setInterval(() => {
-    state.timer.left -= 1;
-    if (state.timer.left <= 0) finishTimer();
+    state.timer.left += state.timer.kind === 'stopwatch' ? 1 : -1;
+    if (state.timer.kind === 'countdown' && state.timer.left <= 0) finishTimer();
     renderTimer();
   }, 1000);
   renderTimer();
@@ -512,26 +568,28 @@ function finishTimer() {
   clearInterval(state.timer.handle);
   state.timer.handle = null;
   state.timer.running = false;
-  if (state.timer.mode === 'break') {
+  if (state.timer.kind === 'countdown' && state.timer.mode === 'break') {
     resetTimer('focus');
     showToast('休息结束，继续加油');
     return;
   }
-  const minutes = Number(state.settings.focusMinutes);
+  if (state.timer.kind === 'stopwatch' && state.timer.left <= 0) { showToast('请先开始计时'); return; }
+  const stopwatch = state.timer.kind === 'stopwatch';
+  const minutes = stopwatch ? Math.max(1, Math.round(state.timer.left / 60)) : Number(state.settings.focusMinutes);
   const now = new Date();
   const start = new Date(now.getTime() - minutes * 60000);
   state.events.push({
-    id: uid('focus'), title: $('focusTask').value.trim() || '专注时间', date: today,
+    id: uid('focus'), title: $('focusTask').value.trim() || (stopwatch ? '学习任务' : '专注时间'), date: today,
     startTime: `${pad(start.getHours())}:${pad(start.getMinutes())}`, endTime: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
-    category: '学习', location: '', notes: `完成 ${minutes} 分钟番茄钟`, color: '#c9573e', source: 'focus', completed: true
+    category: '学习', location: '', notes: `${stopwatch ? '正计时学习' : '倒计时专注'} ${minutes} 分钟`, color: '#c9573e', source: 'focus', completed: true
   });
   state.timer.rounds += 1;
   state.timer.minutes += minutes;
   localStorage.setItem(STORAGE_FOCUS, JSON.stringify({ date: today, rounds: state.timer.rounds, minutes: state.timer.minutes }));
   save();
-  resetTimer('break');
+  resetTimer(stopwatch ? 'focus' : 'break');
   renderAll();
-  showToast(`完成 ${minutes} 分钟专注，休息一下吧`);
+  showToast(`已记录 ${minutes} 分钟${stopwatch ? '学习' : '专注'}`);
 }
 
 function compressWallpaper(file) {
@@ -607,9 +665,11 @@ function bindEvents() {
   $('ledgerList').addEventListener('click', (event) => { const row = event.target.closest('[data-account-id]'); if (row) openAccountDialog(row.dataset.accountId); });
   $('timerToggle').addEventListener('click', toggleTimer);
   $('timerReset').addEventListener('click', () => resetTimer());
+  $('timerFinish').addEventListener('click', finishTimer);
+  document.querySelectorAll('[data-timer-kind]').forEach((button) => button.addEventListener('click', () => setTimerKind(button.dataset.timerKind)));
   $('focusDurationFocus').addEventListener('change', (event) => updateFocusDuration('focus', event.target.value));
   $('focusDurationBreak').addEventListener('change', (event) => updateFocusDuration('break', event.target.value));
-  document.querySelectorAll('[data-focus-mode]').forEach((button) => button.addEventListener('click', () => resetTimer(button.dataset.focusMode)));
+  document.querySelectorAll('[data-focus-mode]').forEach((button) => button.addEventListener('click', () => { if (state.timer.kind === 'countdown') resetTimer(button.dataset.focusMode); }));
   document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); }));
 }
 
