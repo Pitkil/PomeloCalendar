@@ -16,7 +16,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 
 const port = Number(process.env.PORT || 8788)
 const baseUrl = String(process.env.OPENAI_BASE_URL || '').replace(/\/$/, '')
 const model = process.env.OPENAI_MODEL || 'deepseek-v4-flash'
-const cloud = cloudbase.init({ env: process.env.CLOUDBASE_ENV_ID || cloudbase.SYMBOL_CURRENT_ENV })
+const cloudCredentials = process.env.TENCENTCLOUD_SECRETID && process.env.TENCENTCLOUD_SECRETKEY
+  ? { secretId: process.env.TENCENTCLOUD_SECRETID, secretKey: process.env.TENCENTCLOUD_SECRETKEY, sessionToken: process.env.TENCENTCLOUD_SESSIONTOKEN }
+  : {}
+const cloud = cloudbase.init({ env: process.env.CLOUDBASE_ENV_ID || process.env.TCB_ENV || cloudbase.SYMBOL_CURRENT_ENV, ...cloudCredentials })
 const db = cloud.database()
 const jobs = db.collection('schedule_parse_jobs')
 const requestWindows = new Map()
