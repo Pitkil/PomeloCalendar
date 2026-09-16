@@ -58,8 +58,8 @@ let timerId: number | undefined
 
 const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
   ;(wx.cloud as any).callContainer({
-    config: { env: CLOUD_ENV_ID }, path, method,
-    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data,
+    config: { env: CLOUD_ENV_ID }, service: CLOUD_SERVICE_NAME, path, method,
+    header: { 'content-type': 'application/json' }, data, timeout: 20000,
     success: (response: any) => {
       try {
         const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {})
@@ -745,7 +745,14 @@ Page({
         let completed: any
         for (let attempt = 0; attempt < 150; attempt += 1) {
           if (attempt) await wait(2000)
-          const job = await callScheduleService(`/api/schedule/jobs/${encodeURIComponent(created.jobId)}`)
+          let job: any
+          try {
+            job = await callScheduleService(`/api/schedule/jobs/${encodeURIComponent(created.jobId)}`)
+          } catch (error) {
+            // 云托管冷启动或移动网络抖动时，查询可能短暂超时；任务仍在服务端运行，继续轮询即可。
+            if ((error as any)?.retryable) continue
+            throw error
+          }
           if (job.status === 'succeeded') { completed = job; break }
           if (job.status === 'failed') throw new Error(job.error || '课表解析失败，请稍后重试')
         }
