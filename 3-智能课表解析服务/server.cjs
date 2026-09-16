@@ -89,8 +89,12 @@ const ensureCollection = () => {
 }
 
 const cleanJson = (content) => {
-  const text = String(content || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
-  const parsed = JSON.parse(text)
+  const raw = String(content || '').replace(/^\uFEFF/, '').trim()
+  const fenced = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  const start = fenced.indexOf('{')
+  const end = fenced.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('模型返回格式异常：缺少 JSON 对象')
+  const parsed = JSON.parse(fenced.slice(start, end + 1))
   if (!Array.isArray(parsed.courses) || !parsed.courses.length) throw new Error('模型返回中缺少 courses 数组')
   return parsed.courses.map((course, index) => ({
     id: `ai-${index + 1}`,
