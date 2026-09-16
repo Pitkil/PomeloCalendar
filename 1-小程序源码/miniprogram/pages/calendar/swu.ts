@@ -62,11 +62,25 @@ const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', d
     // 同时传 service 和旧版 SDK 使用的路由请求头，兼容不同基础库版本。
     header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data, timeout: 120000,
     success: (response: any) => {
-      try {
-        const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {})
-        if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(body.error || `解析服务返回 ${response.statusCode}`)
-        resolve(body)
-      } catch (error) { reject(error) }
+      const statusCode = Number(response.statusCode || 0)
+      let body: any = response.data || {}
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body || '{}')
+        } catch {
+          const gatewayError = new Error(statusCode === 413 ? '课表文件超过云托管请求限制' : `解析服务网关暂时异常（${statusCode || '无状态码'}）`)
+          ;(gatewayError as any).retryable = statusCode === 408 || statusCode === 429 || statusCode >= 500 || /^\s*</.test(body)
+          reject(gatewayError)
+          return
+        }
+      }
+      if (statusCode < 200 || statusCode >= 300) {
+        const responseError = new Error(body?.error || `解析服务返回 ${statusCode || '未知状态'}`)
+        ;(responseError as any).retryable = statusCode === 408 || statusCode === 429 || statusCode >= 500
+        reject(responseError)
+        return
+      }
+      resolve(body)
     },
     fail: (error: any) => {
       const message = String(error?.errMsg || '')
