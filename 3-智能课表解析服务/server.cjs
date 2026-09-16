@@ -121,6 +121,22 @@ const cleanJson = (content) => {
   })).filter((course) => course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
 }
 
+const cleanDelimitedCourses = (content) => {
+  const text = String(content || '').replace(/```[^\n]*\n?/g, '').trim()
+  const begin = text.indexOf('BEGIN_COURSES')
+  const end = text.lastIndexOf('END_COURSES')
+  if (begin < 0 || end <= begin) throw new Error('模型返回格式异常：课程分隔标记不完整')
+  const lines = text.slice(begin + 'BEGIN_COURSES'.length, end).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const courses = lines.map((line, index) => {
+    const fields = line.split('|||').map((field) => field.trim())
+    if (fields.length !== 6) return null
+    const [title, teacher, place, weekday, sessions, weeks] = fields
+    return { id: `ai-${index + 1}`, title, teacher, place, weekday: Number(weekday), sessions, weeks }
+  }).filter((course) => course && course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
+  if (!courses.length) throw new Error('模型返回格式异常：没有有效课程行')
+  return courses
+}
+
 const friendlyError = (error) => {
   const message = String(error instanceof Error ? error.message : error || '')
   if (/insufficient balance|余额/i.test(message)) return '大模型账户余额不足，请联系管理员充值后重试'
@@ -158,31 +174,35 @@ const parseSchedule = async (buffer) => {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > 12 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== '%PDF') throw new Error('只接受不超过 12MB 的 PDF 课表文件')
   const pdfText = await extractPdfText(buffer)
   const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
+  const delimitedPrompt = `你是西南大学课程表结构化助手。读取下面的课表 PDF 文本，逐行输出所有课程安排。只能使用以下格式，不能输出解释、表头或 Markdown：\nBEGIN_COURSES\n课程名称|||教师|||教室或场地|||星期数字|||节次|||周次\nEND_COURSES\n星期一到星期日使用 1-7；例如：软件工程|||张老师|||25-0601|||3|||3-4节|||1-16周。同一门课在不同星期、节次或周次必须分别输出。不要遗漏或凭空补课程。\n\nPDF 文本：\n${pdfText}`
   let lastError
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
+      const delimited = attempt === 1
+      const requestBody = {
+        model,
+        temperature: 0,
+        max_tokens: 8192,
+        ...(delimited ? {} : { response_format: { type: 'json_object' } }),
+        messages: [{ role: 'user', content: delimited ? delimitedPrompt : prompt }]
+      }
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          temperature: 0,
-          max_tokens: 8192,
-          response_format: { type: 'json_object' },
-          messages: [{ role: 'user', content: attempt ? `${prompt}\n\n上一次输出格式无效。本次必须返回可直接由 JSON.parse 解析的完整 JSON 对象。` : prompt }]
-        }),
+        body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(120000)
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
-      const courses = cleanJson(result?.choices?.[0]?.message?.content)
+      const content = result?.choices?.[0]?.message?.content || result?.choices?.[0]?.message?.reasoning_content || result?.choices?.[0]?.text || ''
+      const courses = delimited ? cleanDelimitedCourses(content) : cleanJson(content)
       if (!courses.length) throw new Error('模型未识别到有效课程')
       return courses
     } catch (error) {
       lastError = error
       const message = String(error?.message || error || '')
       if (attempt || !/unexpected token|JSON|模型返回中缺少|模型未识别/i.test(message)) throw error
-      console.warn('Model returned invalid schedule JSON; retrying once')
+      console.warn('Model returned invalid schedule JSON; retrying with delimited output')
     }
   }
   throw lastError || new Error('模型返回格式异常')
