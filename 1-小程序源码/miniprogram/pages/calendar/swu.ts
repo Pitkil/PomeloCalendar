@@ -26,7 +26,6 @@ interface Settings {
   wallpaper: string
   customWallpaper: string
   cardOpacity: number
-  aiServiceUrl: string
 }
 
 interface AccountEntry { id: string; type: 'expense' | 'income'; amount: number; category: string; date: string; note: string }
@@ -53,7 +52,8 @@ const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
 const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
-const AI_SERVICE_URL = 'https://swu-calendar-ai-314241-5-1488632993.sh.run.tcloudbase.com/api/schedule/parse'
+const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
+const CLOUD_SERVICE_NAME = 'swu-calendar-ai'
 let timerId: number | undefined
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -89,8 +89,7 @@ const defaultSettings = (): Settings => {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    cardOpacity: 94,
-    aiServiceUrl: AI_SERVICE_URL
+    cardOpacity: 94
   }
 }
 
@@ -251,7 +250,6 @@ Page({
     const todayKey = toDateKey(now)
     const savedSettings = wx.getStorageSync(STORAGE_SETTINGS) as Settings
     const settings = savedSettings && savedSettings.semesterStart ? { ...defaultSettings(), ...savedSettings } : defaultSettings()
-    if (!settings.aiServiceUrl || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?\//.test(settings.aiServiceUrl)) settings.aiServiceUrl = AI_SERVICE_URL
     const savedEvents = wx.getStorageSync(STORAGE_EVENTS) as CalendarEvent[]
     const savedAccounts = wx.getStorageSync(STORAGE_ACCOUNTS) as AccountEntry[]
     const focusRecord = wx.getStorageSync(STORAGE_FOCUS) || {}
@@ -582,8 +580,7 @@ Page({
       totalWeeks: Math.max(1, Number(this.data.settings.totalWeeks || 19)),
       focusMinutes: Math.max(1, Number(this.data.settings.focusMinutes || 25)),
       breakMinutes: Math.max(1, Number(this.data.settings.breakMinutes || 5)),
-      cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94))),
-      aiServiceUrl: String(this.data.settings.aiServiceUrl || '').replace(/\/$/, '')
+      cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94)))
     }
     const seconds = settings.focusMinutes * 60
     this.setData({
@@ -687,22 +684,32 @@ Page({
     wx.chooseMessageFile({ count: 1, type: 'file', success: (result) => {
       const file = result.tempFiles[0]
       if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
-      const url = String(this.data.settings.aiServiceUrl || '')
-      if (!url) { wx.showModal({ title: '缺少服务地址', content: '请在日历设置中填写智能课表解析服务地址。', showCancel: false }); return }
+      if (Number(file.size || 0) > 8 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 8MB 的 PDF 课表。', showCancel: false }); return }
       wx.showLoading({ title: '模型解析中' })
-      wx.uploadFile({
-        url, filePath: file.path, name: 'schedule',
-        success: (response) => {
-          try {
-            const body = JSON.parse(response.data || '{}')
-            if (response.statusCode < 200 || response.statusCode >= 300 || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body.error || '模型未返回有效课程')
-            this.replaceRemoteCourses(body.courses)
-            this.setData({ syncVisible: false, syncStatus: `智能导入 ${body.courses.length} 门课程` })
-            wx.showToast({ title: `导入 ${body.courses.length} 门课程`, icon: 'success' })
-          } catch (error) { wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '服务返回异常', showCancel: false }) }
+      wx.getFileSystemManager().readFile({
+        filePath: file.path,
+        encoding: 'base64',
+        success: (readResult) => {
+          ;(wx.cloud as any).callContainer({
+            config: { env: CLOUD_ENV_ID },
+            path: '/api/schedule/parse-base64',
+            method: 'POST',
+            header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' },
+            data: { fileName: file.name || 'schedule.pdf', data: String(readResult.data || '') },
+            success: (response: any) => {
+              try {
+                const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {}) as any
+                if (response.statusCode < 200 || response.statusCode >= 300 || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body.error || '模型未返回有效课程')
+                this.replaceRemoteCourses(body.courses)
+                this.setData({ syncVisible: false, syncStatus: `智能导入 ${body.courses.length} 门课程` })
+                wx.showToast({ title: `导入 ${body.courses.length} 门课程`, icon: 'success' })
+              } catch (error) { wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '服务返回异常', showCancel: false }) }
+            },
+            fail: (error: any) => wx.showModal({ title: '无法连接解析服务', content: error.errMsg || '云托管调用失败', showCancel: false }),
+            complete: () => wx.hideLoading()
+          })
         },
-        fail: (error) => wx.showModal({ title: '无法连接解析服务', content: error.errMsg || '网络请求失败', showCancel: false }),
-        complete: () => wx.hideLoading()
+        fail: (error) => { wx.hideLoading(); wx.showModal({ title: '无法读取文件', content: error.errMsg || 'PDF 文件读取失败', showCancel: false }) }
       })
     } })
   },

@@ -26,6 +26,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
 })
+app.use(express.json({ limit: '16mb' }))
 
 app.get('/health', (req, res) => res.json({ ok: true, model }))
 
@@ -78,27 +79,42 @@ const extractPdfText = async (buffer) => {
   }
 }
 
-app.post('/api/schedule/parse', limitParseRequests, upload.single('schedule'), async (req, res) => {
-  try {
-    if (!process.env.OPENAI_API_KEY) throw new Error('服务端未配置 OPENAI_API_KEY')
-    if (!baseUrl) throw new Error('服务端未配置 OPENAI_BASE_URL')
-    if (!req.file || !/pdf$/i.test(req.file.originalname || '') && req.file.mimetype !== 'application/pdf') throw new Error('只接受 PDF 课表文件')
+const parseSchedule = async (buffer) => {
+  if (!process.env.OPENAI_API_KEY) throw new Error('服务端未配置 OPENAI_API_KEY')
+  if (!baseUrl) throw new Error('服务端未配置 OPENAI_BASE_URL')
+  if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > 12 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== '%PDF') throw new Error('只接受不超过 12MB 的 PDF 课表文件')
+  const pdfText = await extractPdfText(buffer)
+  const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
+  const response = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content: prompt }] })
+  })
+  const result = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
+  const courses = cleanJson(result?.choices?.[0]?.message?.content)
+  if (!courses.length) throw new Error('模型未识别到有效课程')
+  return courses
+}
 
-    const pdfText = await extractPdfText(req.file.buffer)
-    const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content: prompt }] })
-    })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
-    const courses = cleanJson(result?.choices?.[0]?.message?.content)
-    if (!courses.length) throw new Error('模型未识别到有效课程')
-    res.json({ courses })
+const sendParsedSchedule = async (res, buffer) => {
+  try {
+    res.json({ courses: await parseSchedule(buffer) })
   } catch (error) {
     res.status(422).json({ error: error instanceof Error ? error.message : '课表解析失败' })
   }
+}
+
+app.post('/api/schedule/parse', limitParseRequests, upload.single('schedule'), (req, res) => {
+  if (!req.file || !/pdf$/i.test(req.file.originalname || '') && req.file.mimetype !== 'application/pdf') return res.status(422).json({ error: '只接受 PDF 课表文件' })
+  return sendParsedSchedule(res, req.file.buffer)
+})
+
+app.post('/api/schedule/parse-base64', limitParseRequests, (req, res) => {
+  const fileName = String(req.body?.fileName || '')
+  const data = req.body?.data
+  if (!/\.pdf$/i.test(fileName) || typeof data !== 'string') return res.status(422).json({ error: '只接受 PDF 课表文件' })
+  return sendParsedSchedule(res, Buffer.from(data, 'base64'))
 })
 
 app.listen(port, () => console.log(`SWU AI schedule parser listening on ${port}`))

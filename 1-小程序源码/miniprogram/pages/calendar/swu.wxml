@@ -210,7 +210,6 @@
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
       </view>
       <label class="field"><text>卡片透明度（70-100）</text><input type="number" value="{{settings.cardOpacity}}" data-field="cardOpacity" bindinput="onSettingsInput" /></label>
-      <label class="field"><text>智能课表解析服务地址</text><input value="{{settings.aiServiceUrl}}" data-field="aiServiceUrl" bindinput="onSettingsInput" placeholder="https://.../api/schedule/parse" /></label>
       <view class="upload-button" bindtap="chooseWallpaper" role="button">＋ 从相册选择自定义壁纸</view>
       <view class="privacy-tip">课表通过文件导入，所有日历与账目数据仅保存在本机。</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSettings" role="button">取消</view><view class="primary-button" bindtap="saveSettings" role="button">保存设置</view></view>
