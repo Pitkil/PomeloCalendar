@@ -60,7 +60,7 @@ const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', d
   ;(wx.cloud as any).callContainer({
     config: { env: CLOUD_ENV_ID }, service: CLOUD_SERVICE_NAME, path, method,
     // 同时传 service 和旧版 SDK 使用的路由请求头，兼容不同基础库版本。
-    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data, timeout: 20000,
+    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data, timeout: 120000,
     success: (response: any) => {
       try {
         const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {})
