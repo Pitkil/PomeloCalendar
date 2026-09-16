@@ -200,6 +200,7 @@ const parseSchedule = async (buffer) => {
         model,
         temperature: 0,
         max_tokens: 8192,
+        thinking: { type: 'disabled' },
         ...(delimited ? {} : { response_format: { type: 'json_object' } }),
         messages: [{ role: 'user', content: delimited ? delimitedPrompt : prompt }]
       }
