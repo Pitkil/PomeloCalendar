@@ -122,16 +122,33 @@ const cleanJson = (content) => {
 }
 
 const cleanDelimitedCourses = (content) => {
-  const text = String(content || '').replace(/```[^\n]*\n?/g, '').trim()
+  const text = String(content || '').replace(/```[^\n]*\n?/g, '').replace(/｜/g, '|').trim()
   const begin = text.indexOf('BEGIN_COURSES')
   const end = text.lastIndexOf('END_COURSES')
   if (begin < 0 || end <= begin) throw new Error('模型返回格式异常：课程分隔标记不完整')
   const lines = text.slice(begin + 'BEGIN_COURSES'.length, end).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const courses = lines.map((line, index) => {
-    const fields = line.split('|||').map((field) => field.trim())
+    if (line.startsWith('{')) {
+      try {
+        const course = JSON.parse(jsonrepair(line))
+        return {
+          id: `ai-${index + 1}`,
+          title: String(course.title || '').trim(),
+          teacher: String(course.teacher || '').trim(),
+          place: String(course.place || '').trim(),
+          weekday: Number(course.weekday),
+          sessions: String(course.sessions || '').trim(),
+          weeks: String(course.weeks || '').trim()
+        }
+      } catch { return null }
+    }
+    let fields = line.includes('|||') ? line.split('|||') : line.split('\t')
+    if (fields.length !== 6 && /^\|.*\|$/.test(line)) fields = line.slice(1, -1).split('|')
+    fields = fields.map((field) => field.trim())
     if (fields.length !== 6) return null
     const [title, teacher, place, weekday, sessions, weeks] = fields
-    return { id: `ai-${index + 1}`, title, teacher, place, weekday: Number(weekday), sessions, weeks }
+    const weekdayNumber = Number(weekday) || ({ 星期一: 1, 星期二: 2, 星期三: 3, 星期四: 4, 星期五: 5, 星期六: 6, 星期日: 7, 星期天: 7 })[weekday]
+    return { id: `ai-${index + 1}`, title: title.replace(/^\d+[.、]\s*/, ''), teacher, place, weekday: weekdayNumber, sessions, weeks }
   }).filter((course) => course && course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
   if (!courses.length) throw new Error('模型返回格式异常：没有有效课程行')
   return courses
@@ -174,7 +191,7 @@ const parseSchedule = async (buffer) => {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > 12 * 1024 * 1024 || buffer.subarray(0, 4).toString() !== '%PDF') throw new Error('只接受不超过 12MB 的 PDF 课表文件')
   const pdfText = await extractPdfText(buffer)
   const prompt = `你是西南大学课程表结构化助手。将以下教务系统导出的课表 PDF 文本转换为 JSON。只输出一个 JSON 对象，绝不能附加解释。格式：{"courses":[{"title":"课程名称","teacher":"教师","place":"教室或场地","weekday":1,"sessions":"1-2节","weeks":"1-16周"}]}。weekday 中星期一到星期日为 1-7；保留单双周、多个周次和节次信息；同一门课在不同星期/节次/周次需要分别输出。不要凭空补课程。\n\nPDF 文本：\n${pdfText}`
-  const delimitedPrompt = `你是西南大学课程表结构化助手。读取下面的课表 PDF 文本，逐行输出所有课程安排。只能使用以下格式，不能输出解释、表头或 Markdown：\nBEGIN_COURSES\n课程名称|||教师|||教室或场地|||星期数字|||节次|||周次\nEND_COURSES\n星期一到星期日使用 1-7；例如：软件工程|||张老师|||25-0601|||3|||3-4节|||1-16周。同一门课在不同星期、节次或周次必须分别输出。不要遗漏或凭空补课程。\n\nPDF 文本：\n${pdfText}`
+  const delimitedPrompt = `你是西南大学课程表结构化助手。读取下面的课表 PDF 文本，逐行输出所有课程安排。只能输出 BEGIN_COURSES、每行一个独立 JSON 对象、END_COURSES，不能输出解释、数组、表头或 Markdown。示例：\nBEGIN_COURSES\n{"title":"软件工程","teacher":"张老师","place":"25-0601","weekday":3,"sessions":"3-4节","weeks":"1-16周"}\nEND_COURSES\n星期一到星期日使用 1-7。同一门课在不同星期、节次或周次必须分别输出。不要遗漏或凭空补课程。\n\nPDF 文本：\n${pdfText}`
   let lastError
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -195,7 +212,12 @@ const parseSchedule = async (buffer) => {
       const result = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
       const content = result?.choices?.[0]?.message?.content || result?.choices?.[0]?.message?.reasoning_content || result?.choices?.[0]?.text || ''
-      const courses = delimited ? cleanDelimitedCourses(content) : cleanJson(content)
+      let courses
+      if (delimited) {
+        try { courses = cleanJson(content) } catch { courses = cleanDelimitedCourses(content) }
+      } else {
+        courses = cleanJson(content)
+      }
       if (!courses.length) throw new Error('模型未识别到有效课程')
       return courses
     } catch (error) {
