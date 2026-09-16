@@ -56,6 +56,30 @@ const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
 const CLOUD_SERVICE_NAME = 'swu-calendar-ai'
 let timerId: number | undefined
 
+const callScheduleService = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
+  ;(wx.cloud as any).callContainer({
+    config: { env: CLOUD_ENV_ID },
+    path,
+    method,
+    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' },
+    data,
+    success: (response: any) => {
+      try {
+        const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {})
+        if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(body.error || `解析服务返回 ${response.statusCode}`)
+        resolve(body)
+      } catch (error) { reject(error) }
+    },
+    fail: (error: any) => {
+      const message = String(error?.errMsg || '')
+      if (/102002|timeout|超时/i.test(message)) reject(new Error('连接解析服务超时，请稍后重试'))
+      else reject(new Error('暂时无法连接解析服务，请检查网络后重试'))
+    }
+  })
+})
+
+const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
+
 const pad = (value: number) => String(value).padStart(2, '0')
 
 const toDateKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -681,36 +705,47 @@ Page({
   openJw() { wx.setClipboardData({ data: 'https://ywtb.swu.edu.cn/new-office-hall-pc/index.html#/' }); wx.showToast({ title: '办事大厅网址已复制', icon: 'none' }) },
 
   chooseScheduleFile() {
-    wx.chooseMessageFile({ count: 1, type: 'file', success: (result) => {
+    wx.chooseMessageFile({ count: 1, type: 'file', success: async (result) => {
       const file = result.tempFiles[0]
       if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
       if (Number(file.size || 0) > 8 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 8MB 的 PDF 课表。', showCancel: false }); return }
-      wx.showLoading({ title: '模型解析中' })
-      wx.getFileSystemManager().readFile({
-        filePath: file.path,
-        encoding: 'base64',
-        success: (readResult) => {
-          ;(wx.cloud as any).callContainer({
-            config: { env: CLOUD_ENV_ID },
-            path: '/api/schedule/parse-base64',
-            method: 'POST',
-            header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' },
-            data: { fileName: file.name || 'schedule.pdf', data: String(readResult.data || '') },
-            success: (response: any) => {
-              try {
-                const body = typeof response.data === 'string' ? JSON.parse(response.data || '{}') : (response.data || {}) as any
-                if (response.statusCode < 200 || response.statusCode >= 300 || !Array.isArray(body.courses) || !body.courses.length) throw new Error(body.error || '模型未返回有效课程')
-                this.replaceRemoteCourses(body.courses)
-                this.setData({ syncVisible: false, syncStatus: `智能导入 ${body.courses.length} 门课程` })
-                wx.showToast({ title: `导入 ${body.courses.length} 门课程`, icon: 'success' })
-              } catch (error) { wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '服务返回异常', showCancel: false }) }
-            },
-            fail: (error: any) => wx.showModal({ title: '无法连接解析服务', content: error.errMsg || '云托管调用失败', showCancel: false }),
-            complete: () => wx.hideLoading()
-          })
-        },
-        fail: (error) => { wx.hideLoading(); wx.showModal({ title: '无法读取文件', content: error.errMsg || 'PDF 文件读取失败', showCancel: false }) }
-      })
+      let uploadedFileID = ''
+      let jobCreated = false
+      try {
+        wx.showLoading({ title: '上传课表中', mask: true })
+        const uploadResult = await new Promise<any>((resolve, reject) => wx.cloud.uploadFile({
+          cloudPath: `schedule-imports/${Date.now()}-${Math.random().toString(16).slice(2)}.pdf`,
+          filePath: file.path,
+          success: resolve,
+          fail: reject
+        }))
+        uploadedFileID = String(uploadResult.fileID || '')
+        if (!uploadedFileID) throw new Error('课表上传失败，请稍后重试')
+
+        wx.showLoading({ title: '正在创建任务', mask: true })
+        const created = await callScheduleService('/api/schedule/jobs', 'POST', { fileID: uploadedFileID, fileName: file.name || 'schedule.pdf' })
+        if (!created.jobId) throw new Error('解析任务创建失败，请稍后重试')
+        jobCreated = true
+
+        wx.showLoading({ title: '模型解析中', mask: true })
+        let completed: any
+        for (let attempt = 0; attempt < 90; attempt += 1) {
+          if (attempt) await wait(2000)
+          const job = await callScheduleService(`/api/schedule/jobs/${encodeURIComponent(created.jobId)}`)
+          if (job.status === 'succeeded') { completed = job; break }
+          if (job.status === 'failed') throw new Error(job.error || '课表解析失败，请稍后重试')
+        }
+        if (!completed) throw new Error('解析时间较长，请稍后重新查看或再次导入')
+        if (!Array.isArray(completed.courses) || !completed.courses.length) throw new Error('模型未识别到有效课程')
+        this.replaceRemoteCourses(completed.courses)
+        this.setData({ syncVisible: false, syncStatus: `智能导入 ${completed.courses.length} 门课程` })
+        wx.hideLoading()
+        wx.showToast({ title: `导入 ${completed.courses.length} 门课程`, icon: 'success' })
+      } catch (error) {
+        wx.hideLoading()
+        if (uploadedFileID && !jobCreated) wx.cloud.deleteFile({ fileList: [uploadedFileID] })
+        wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
+      }
     } })
   },
 

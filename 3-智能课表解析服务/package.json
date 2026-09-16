@@ -3,8 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "type": "commonjs",
-  "scripts": { "start": "node server.cjs" },
+  "scripts": {
+    "start": "node server.cjs"
+  },
   "dependencies": {
+    "@cloudbase/node-sdk": "^3.18.3",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "multer": "^2.0.2"

@@ -1,37 +1,53 @@
 require('dotenv').config()
 
+const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
+const cloudbase = require('@cloudbase/node-sdk')
 const express = require('express')
 const multer = require('multer')
 
 const execFileAsync = promisify(execFile)
-
 const app = express()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } })
 const port = Number(process.env.PORT || 8788)
 const baseUrl = String(process.env.OPENAI_BASE_URL || '').replace(/\/$/, '')
 const model = process.env.OPENAI_MODEL || 'deepseek-v4-flash'
+const cloud = cloudbase.init({ env: process.env.CLOUDBASE_ENV_ID || cloudbase.SYMBOL_CURRENT_ENV })
+const db = cloud.database()
+const jobs = db.collection('schedule_parse_jobs')
 const requestWindows = new Map()
 const RATE_WINDOW_MS = 15 * 60 * 1000
 const RATE_LIMIT = 8
+const JOB_STALE_MS = 10 * 60 * 1000
+const inCloudRuntime = Boolean(process.env.TCB_ENV || process.env.TENCENTCLOUD_RUNENV || process.env.TENCENTCLOUD_SECRETID)
+let collectionReady
+let workerRunning = false
+let lastRecoveryAt = 0
+
+// CloudBase SDK may surface credential errors through a detached promise in a
+// local development process. Keep the HTTP service alive so it can report a
+// normal 503 response instead of being terminated by Node's default policy.
+process.on('unhandledRejection', (error) => console.error('Unhandled CloudBase error:', error?.message || 'unknown error'))
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*')
-  res.header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.header('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') return res.sendStatus(204)
   next()
 })
-app.use(express.json({ limit: '16mb' }))
+app.use(express.json({ limit: '128kb' }))
 
 app.get('/health', (req, res) => res.json({ ok: true, model }))
 
+const openIdOf = (req) => String(req.headers['x-wx-openid'] || req.headers['x-wx-open-id'] || '').trim()
+
 const limitParseRequests = (req, res, next) => {
-  const key = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
+  const key = openIdOf(req) || String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').split(',')[0].trim()
   const now = Date.now()
   const window = requestWindows.get(key) || { startedAt: now, count: 0 }
   if (now - window.startedAt >= RATE_WINDOW_MS) {
@@ -42,6 +58,28 @@ const limitParseRequests = (req, res, next) => {
   requestWindows.set(key, window)
   if (window.count > RATE_LIMIT) return res.status(429).json({ error: '解析请求过于频繁，请 15 分钟后再试' })
   next()
+}
+
+const ensureCollection = () => {
+  if (!collectionReady) {
+    try {
+      collectionReady = Promise.resolve(jobs.limit(1).get()).catch(async () => {
+        try {
+          await db.createCollection('schedule_parse_jobs')
+        } catch (error) {
+          const message = String(error?.message || error)
+          if (!/exist|already|已存在/i.test(message)) throw error
+        }
+      }).catch((error) => {
+        collectionReady = undefined
+        throw error
+      })
+    } catch (error) {
+      collectionReady = undefined
+      return Promise.reject(error)
+    }
+  }
+  return collectionReady
 }
 
 const cleanJson = (content) => {
@@ -57,6 +95,16 @@ const cleanJson = (content) => {
     sessions: String(course.sessions || '').trim(),
     weeks: String(course.weeks || '').trim()
   })).filter((course) => course.title && course.weekday >= 1 && course.weekday <= 7 && course.sessions)
+}
+
+const friendlyError = (error) => {
+  const message = String(error instanceof Error ? error.message : error || '')
+  if (/insufficient balance|余额/i.test(message)) return '大模型账户余额不足，请联系管理员充值后重试'
+  if (/abort|timeout|timed out|超时/i.test(message)) return '大模型解析超时，请稍后重试'
+  if (/PDF 未包含|无法读取该 PDF|只接受/.test(message)) return message
+  if (/OPENAI_API_KEY|OPENAI_BASE_URL/.test(message)) return '解析服务尚未完成模型配置'
+  if (/模型未识别|模型返回/.test(message)) return message
+  return '课表解析失败，请稍后重试'
 }
 
 const extractPdfText = async (buffer) => {
@@ -88,7 +136,8 @@ const parseSchedule = async (buffer) => {
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content: prompt }] })
+    body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
+    signal: AbortSignal.timeout(50000)
   })
   const result = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
@@ -101,20 +150,100 @@ const sendParsedSchedule = async (res, buffer) => {
   try {
     res.json({ courses: await parseSchedule(buffer) })
   } catch (error) {
-    res.status(422).json({ error: error instanceof Error ? error.message : '课表解析失败' })
+    res.status(422).json({ error: friendlyError(error) })
+  }
+}
+
+const recoverStaleJobs = async () => {
+  if (Date.now() - lastRecoveryAt < 60000) return
+  lastRecoveryAt = Date.now()
+  const result = await jobs.where({ status: 'running' }).limit(20).get()
+  const stale = (result.data || []).filter((job) => Number(job.updatedAt) < Date.now() - JOB_STALE_MS)
+  await Promise.all(stale.map((job) => jobs.doc(job._id).update({ status: 'pending', updatedAt: Date.now() })))
+}
+
+const processJob = async (job) => {
+  try {
+    const downloaded = await cloud.downloadFile({ fileID: job.fileID })
+    const buffer = Buffer.isBuffer(downloaded.fileContent) ? downloaded.fileContent : Buffer.from(downloaded.fileContent || '')
+    const courses = await parseSchedule(buffer)
+    await jobs.doc(job._id).update({ status: 'succeeded', courses, error: '', updatedAt: Date.now(), finishedAt: Date.now() })
+  } catch (error) {
+    await jobs.doc(job._id).update({ status: 'failed', error: friendlyError(error), updatedAt: Date.now(), finishedAt: Date.now() })
+  } finally {
+    try {
+      await cloud.deleteFile({ fileList: [job.fileID] })
+    } catch (error) {
+      console.warn('Unable to delete temporary schedule file:', error?.message || 'unknown error')
+    }
+  }
+}
+
+const runPendingJobs = async () => {
+  if (workerRunning) return
+  workerRunning = true
+  try {
+    await ensureCollection()
+    await recoverStaleJobs()
+    while (true) {
+      const result = await jobs.where({ status: 'pending' }).limit(10).get()
+      const job = (result.data || []).sort((left, right) => Number(left.createdAt) - Number(right.createdAt))[0]
+      if (!job) break
+      const claim = await jobs.where({ _id: job._id, status: 'pending' }).update({ status: 'running', updatedAt: Date.now() })
+      if (!claim.updated) continue
+      await processJob(job)
+    }
+  } catch (error) {
+    console.error('Schedule worker error:', error?.message || 'unknown error')
+  } finally {
+    workerRunning = false
   }
 }
 
 app.post('/api/schedule/parse', limitParseRequests, upload.single('schedule'), (req, res) => {
-  if (!req.file || !/pdf$/i.test(req.file.originalname || '') && req.file.mimetype !== 'application/pdf') return res.status(422).json({ error: '只接受 PDF 课表文件' })
+  if (!req.file || (!/pdf$/i.test(req.file.originalname || '') && req.file.mimetype !== 'application/pdf')) return res.status(422).json({ error: '只接受 PDF 课表文件' })
   return sendParsedSchedule(res, req.file.buffer)
 })
 
-app.post('/api/schedule/parse-base64', limitParseRequests, (req, res) => {
-  const fileName = String(req.body?.fileName || '')
-  const data = req.body?.data
-  if (!/\.pdf$/i.test(fileName) || typeof data !== 'string') return res.status(422).json({ error: '只接受 PDF 课表文件' })
-  return sendParsedSchedule(res, Buffer.from(data, 'base64'))
+app.post('/api/schedule/jobs', limitParseRequests, async (req, res) => {
+  const openId = openIdOf(req)
+  if (!openId) return res.status(401).json({ error: '请从关联的微信小程序发起导入' })
+  const fileID = String(req.body?.fileID || '')
+  const fileName = String(req.body?.fileName || '').slice(0, 160)
+  if (!/\.pdf$/i.test(fileName) || !fileID.startsWith('cloud://') || !fileID.includes('/schedule-imports/')) return res.status(422).json({ error: '课表文件无效，请重新选择 PDF' })
+  try {
+    await ensureCollection()
+    const jobId = crypto.randomUUID()
+    const now = Date.now()
+    await jobs.doc(jobId).set({ ownerOpenId: openId, fileID, fileName, status: 'pending', courses: [], error: '', attempts: 0, createdAt: now, updatedAt: now })
+    res.status(202).json({ jobId, status: 'pending' })
+    setImmediate(() => void runPendingJobs())
+  } catch (error) {
+    console.error('Unable to create schedule job:', error?.message || 'unknown error')
+    res.status(503).json({ error: '云数据库暂时不可用，请稍后重试' })
+  }
 })
 
-app.listen(port, () => console.log(`SWU AI schedule parser listening on ${port}`))
+app.get('/api/schedule/jobs/:jobId', async (req, res) => {
+  const openId = openIdOf(req)
+  if (!openId) return res.status(401).json({ error: '请从关联的微信小程序查询任务' })
+  try {
+    await ensureCollection()
+    const result = await jobs.doc(String(req.params.jobId || '')).get()
+    const job = result.data?.[0]
+    if (!job || job.ownerOpenId !== openId) return res.status(404).json({ error: '解析任务不存在或已失效' })
+    res.json({ status: job.status, courses: job.status === 'succeeded' ? job.courses : undefined, error: job.status === 'failed' ? job.error : undefined })
+  } catch (error) {
+    res.status(503).json({ error: '暂时无法查询解析进度' })
+  }
+})
+
+app.listen(port, () => {
+  console.log(`SWU AI schedule parser listening on ${port}`)
+  if (inCloudRuntime) void runPendingJobs()
+})
+
+if (inCloudRuntime) {
+  const workerTimer = setInterval(() => void runPendingJobs(), 5000)
+  workerTimer.unref()
+}
