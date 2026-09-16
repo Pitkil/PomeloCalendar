@@ -738,7 +738,7 @@ Page({
 
         wx.showLoading({ title: '模型解析中', mask: true })
         let completed: any
-        for (let attempt = 0; attempt < 90; attempt += 1) {
+        for (let attempt = 0; attempt < 150; attempt += 1) {
           if (attempt) await wait(2000)
           const job = await callScheduleService(`/api/schedule/jobs/${encodeURIComponent(created.jobId)}`)
           if (job.status === 'succeeded') { completed = job; break }

@@ -107,6 +107,7 @@ const friendlyError = (error) => {
   const message = String(error instanceof Error ? error.message : error || '')
   if (/insufficient balance|余额/i.test(message)) return '大模型账户余额不足，请联系管理员充值后重试'
   if (/abort|timeout|timed out|超时/i.test(message)) return '大模型解析超时，请稍后重试'
+  if (/unexpected token|JSON|模型返回中缺少/i.test(message)) return '模型返回格式异常，请重新导入一次'
   if (/PDF 未包含|无法读取该 PDF|只接受/.test(message)) return message
   if (/OPENAI_API_KEY|OPENAI_BASE_URL/.test(message)) return '解析服务尚未完成模型配置'
   if (/模型未识别|模型返回/.test(message)) return message
@@ -143,7 +144,7 @@ const parseSchedule = async (buffer) => {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, temperature: 0, messages: [{ role: 'user', content: prompt }] }),
-    signal: AbortSignal.timeout(50000)
+    signal: AbortSignal.timeout(120000)
   })
   const result = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(result?.error?.message || `模型服务返回 ${response.status}`)
