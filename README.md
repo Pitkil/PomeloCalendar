@@ -34,7 +34,7 @@ The parser sends text extracted from academic-system PDFs to an OpenAI-compatibl
 - Traditional weekday-by-period timetable grids
 - Course lists that include exact start and end times
 - Date-based schedules without a recurring weekday
-- A regression sample exported from Southwest University's academic system
+- A representative regression sample exported from a university academic system
 
 Parsing intentionally relies on the model response and has no local rule-based fallback. Results from scanned, unusually formatted, or low-quality PDFs depend on the configured model, so imported times should always be reviewed.
 
