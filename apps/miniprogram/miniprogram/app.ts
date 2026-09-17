@@ -6,6 +6,6 @@ App({
     })
   },
   globalData: {
-    appName: '西柚日历'
+    appName: '柚课日历'
   }
 })

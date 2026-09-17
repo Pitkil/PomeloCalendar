@@ -1,7 +1,7 @@
 {
-  "name": "campus-calendar-miniprogram",
+  "name": "youke-calendar-miniprogram",
   "version": "2.0.0",
-  "description": "西柚日历微信小程序：适配不同学校的课表导入、校园日历、学习计时、记账和个性化壁纸。",
+  "description": "柚课日历微信小程序：适配不同学校的课表导入、校园日历、学习计时、记账和个性化壁纸。",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

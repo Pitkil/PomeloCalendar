@@ -18,4 +18,4 @@ Thumbs.db
 # Temporary artifacts
 tmp/
 *.log
-2-网页版源码/captured-swu.json
+apps/web/captured-swu.json

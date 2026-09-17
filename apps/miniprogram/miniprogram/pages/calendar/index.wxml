@@ -5,8 +5,8 @@
     <view class="hero">
       <view class="brand-row">
         <view class="brand-copy">
-          <view class="eyebrow">CAMPUS CALENDAR</view>
-          <view class="brand">西柚日历</view>
+          <view class="eyebrow">YOUKE CALENDAR</view>
+          <view class="brand">柚课日历</view>
           <view class="semester-line">{{settings.schoolName}} · {{settings.semesterTitle}} · {{teachingWeek ? '第' + teachingWeek + '教学周' : '假期 / 未排课'}}</view>
         </view>
         <view class="hero-actions">
