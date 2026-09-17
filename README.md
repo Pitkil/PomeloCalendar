@@ -75,13 +75,13 @@ Before releasing the Mini Program, add every provider domain you intend to suppo
 
 ### Web app
 
-The web app has no build step and no backend dependency. Double-click `apps/web/index.html` to use it directly. You may also serve the repository through a local static server:
+The web app is completely offline: no backend, installation, build command, account, or API key is required.
 
-```bash
-python -m http.server 8080
-```
+1. Click **Code → Download ZIP** on GitHub and extract the archive.
+2. Open the extracted `apps/web` folder.
+3. Double-click **`index.html`** to start using Youke Calendar in your browser.
 
-Then visit `http://localhost:8080/apps/web/`. Courses are added locally through “Add Event” with the “Course” category. PDF import and cloud synchronization are intentionally not included in the web version.
+All web data stays in the current browser. Add a course through **Add Event → Course**. File-based timetable import and cloud synchronization are intentionally not included in the web version.
 
 ## Data and privacy
 
