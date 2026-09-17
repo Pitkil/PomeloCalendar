@@ -20,7 +20,7 @@ Youke Calendar is a campus productivity toolkit for university students. It comb
 | Area | What it provides |
 | --- | --- |
 | Calendar and timetable | Monthly calendar, weekly timetable, teaching-week tracking, personal events, search, completion state, and conflict warnings |
-| AI-assisted PDF import | Supports traditional weekly grids, lists with exact start/end times, and date-based course schedules |
+| AI-assisted PDF import | Mini Program only: supports traditional weekly grids, lists with exact start/end times, and date-based course schedules |
 | Study timer | Countdown and stopwatch tasks, configurable focus/rest durations, and completed study records |
 | Campus budgeting | Income and expense entries, category summaries, and trend visualization |
 | Insights | Study-time totals, income/expense breakdowns, and recent trends |
@@ -49,7 +49,6 @@ Parsing intentionally relies on the model response and has no local rule-based f
 │  └─ schedule-parser/      # PDF extraction and AI course structuring
 ├─ assets/
 │  ├─ readme/               # README promotional assets
-│  ├─ icons.svg             # Web icon sprite
 │  └─ youke-calendar-avatar.png
 ├─ README.md                # English
 └─ README.zh-CN.md          # Simplified Chinese
@@ -75,13 +74,13 @@ PDF import also requires the parser service below to be deployed in the same WeC
 
 ### Web app
 
-The web app has no build step. Open `apps/web/index.html` directly, or serve the repository through a local static server:
+The web app has no build step and no backend dependency. Double-click `apps/web/index.html` to use it directly. You may also serve the repository through a local static server:
 
 ```bash
 python -m http.server 8080
 ```
 
-Then visit `http://localhost:8080/apps/web/`. To import a timetable, enter the parser's complete `/api/schedule/parse` URL in Calendar Settings.
+Then visit `http://localhost:8080/apps/web/`. Courses are added locally through “Add Event” with the “Course” category. PDF import and cloud synchronization are intentionally not included in the web version.
 
 ### Schedule parser service
 
@@ -106,9 +105,9 @@ The local synchronous endpoint is `http://127.0.0.1:8788/api/schedule/parse`. Th
 
 - Events, timetable data, study records, transactions, and appearance settings are stored locally by default.
 - The app does not request or store university sign-in credentials.
-- During import, the PDF is temporarily sent to the parser service; asynchronous jobs clear temporary PDF content after success or failure.
+- When the Mini Program imports a timetable, the PDF is temporarily sent to the parser service; asynchronous jobs clear temporary PDF content after success or failure.
 - The model API key remains in server-side environment variables.
-- Public web deployments should add HTTPS, CORS rules, access control, and rate limiting around the parser endpoint.
+- The web version makes no backend requests and keeps its application data in the current browser.
 
 ## Verification
 
@@ -130,7 +129,8 @@ The parser currently has five automated test cases. The project also verifies ma
 
 ## Known limitations
 
-- AI-assisted import requires a separately deployed parser service and may incur model or cloud-resource costs.
+- Mini Program AI-assisted import requires a separately deployed parser service and may incur model or cloud-resource costs.
+- The web version supports manual course entry but does not import timetable PDFs.
 - PDF layouts vary widely, and users remain responsible for reviewing imported course data.
 - Web data is stored in the current browser and will not survive cleared site data or automatically move to another device.
 - Cross-device account synchronization is not currently available in either client.

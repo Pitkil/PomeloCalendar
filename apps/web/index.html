@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#176b55">
-  <meta name="description" content="柚课日历：适用于不同学校的课表导入、教学周、个人日程、学习计时与校园记账。">
+  <meta name="description" content="柚课日历：双击即可使用的本地校园日历，支持课程日程、学习计时、统计与校园记账。">
   <title>柚课日历 · Youke Calendar</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -18,8 +18,7 @@
         <p id="semesterLine">载入学期信息…</p>
       </div>
       <div class="header-actions">
-        <button class="circle-button" id="syncOpen" title="导入课表" aria-label="导入课表"><svg class="ui-icon" aria-hidden="true"><use href="../assets/icons.svg#import"></use></svg></button>
-        <button class="circle-button" id="settingsOpen" title="日历设置" aria-label="日历设置"><svg class="ui-icon" aria-hidden="true"><use href="../assets/icons.svg#settings"></use></svg></button>
+        <button class="circle-button settings-glyph" id="settingsOpen" title="日历设置" aria-label="日历设置">⚙</button>
       </div>
     </header>
 
@@ -42,7 +41,7 @@
           <div class="tomato-stat"><strong id="focusMinutes">0</strong><span>专注分钟</span></div>
         </div>
         <div class="legend">
-          <span><i class="dot course"></i>教务课程</span>
+          <span><i class="dot course"></i>课程安排</span>
           <span><i class="dot personal"></i>个人日程</span>
           <span><i class="dot focus"></i>专注记录</span>
         </div>
@@ -155,7 +154,7 @@
       </main>
     </section>
 
-    <footer><span id="syncStatus">尚未导入课表</span><span>日程与账目保存在本机 · PDF 仅用于课表解析</span></footer>
+    <footer><span>打开即用 · 无需安装</span><span>日程、学习记录与账目仅保存在当前浏览器</span></footer>
   </div>
 
   <button class="floating-add" id="floatingAdd" aria-label="新增日程">＋</button>
@@ -181,30 +180,12 @@
     <form method="dialog" id="settingsForm">
       <div class="dialog-top"><div><span class="micro-label">PERSONALIZE</span><h2>日历设置</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
       <div class="settings-columns">
-        <section><h3>学校与学期</h3><label class="field"><span>学校名称</span><input id="settingSchoolName" placeholder="例如：我的大学"></label><label class="field"><span>教务系统入口（可选）</span><input id="settingPortalUrl" type="url" placeholder="https://..."></label><label class="field"><span>学期名称</span><input id="settingSemesterTitle"></label><div class="field-grid"><label class="field"><span>开始日期</span><input id="settingSemesterStart" type="date"></label><label class="field"><span>结束日期</span><input id="settingSemesterEnd" type="date"></label></div><label class="field"><span>教学周数</span><input id="settingTotalWeeks" type="number" min="1" max="30"></label></section>
+        <section><h3>学校与学期</h3><label class="field"><span>学校名称</span><input id="settingSchoolName" placeholder="例如：我的大学"></label><label class="field"><span>学期名称</span><input id="settingSemesterTitle"></label><div class="field-grid"><label class="field"><span>开始日期</span><input id="settingSemesterStart" type="date"></label><label class="field"><span>结束日期</span><input id="settingSemesterEnd" type="date"></label></div><label class="field"><span>教学周数</span><input id="settingTotalWeeks" type="number" min="1" max="30"></label></section>
         <section><h3>外观</h3><label class="field"><span>主题色</span><select id="settingAccent"><option value="#176b55">校历绿</option><option value="#316b83">湖水蓝</option><option value="#c9573e">番茄红</option><option value="#a87919">银杏金</option></select></label><label class="field"><span>预设壁纸</span><select id="settingWallpaper"><option value="paper">暖白纸张</option><option value="lake">缙云晨雾</option><option value="ginkgo">银杏午后</option><option value="night">暮色自习</option></select></label><label class="field"><span>卡片透明度</span><input id="settingOpacity" type="range" min="72" max="100"></label><label class="wallpaper-upload"><input id="wallpaperFile" type="file" accept="image/*"><span>＋ 上传自定义壁纸</span></label></section>
       </div>
-      <label class="field full"><span>每节课时间（按第 1 节起，用逗号分隔）</span><textarea id="settingPeriodTimes" placeholder="08:00-08:45,08:55-09:40"></textarea></label>
-      <label class="field full"><span>智能课表解析服务地址</span><input id="settingAiServiceUrl" type="url" placeholder="https://your-service.example.com/api/schedule/parse"></label>
       <div class="utility-row"><button type="button" class="quiet-button" id="exportIcs">导出 ICS 日历</button><button type="button" class="quiet-button" id="exportBackup">备份 JSON</button></div>
-      <p class="privacy-note">日程与账目保存在本机。课表通过文件导入，不需要在本应用填写学校账号或密码。</p>
+      <p class="privacy-note">网页版不连接服务器。课程、日程、学习记录与账目仅保存在当前浏览器中。</p>
       <div class="dialog-actions"><button value="cancel" class="quiet-button">取消</button><button type="submit" class="primary-button">保存设置</button></div>
-    </form>
-  </dialog>
-
-  <dialog id="syncDialog" class="sheet-dialog">
-    <form method="dialog" id="syncForm">
-      <div class="dialog-top"><div><span class="micro-label">COURSE IMPORT</span><h2>导入课表</h2></div><button class="dialog-close" value="cancel" aria-label="关闭">×</button></div>
-      <div class="import-guide"><strong>大模型智能解析 PDF</strong><span>① 打开所在学校的教务系统　② 找到“我的课表”　③ 导出 PDF　④ 上传并等待模型整理</span><a class="manual-login-link hidden" id="campusPortalLink" target="_blank" rel="noreferrer">↗ 打开教务系统</a></div>
-      <details class="manual-import" id="pdfImportPanel" open>
-        <summary>上传教务系统导出的 PDF</summary>
-        <div class="manual-import-body">
-          <p>支持网格课表、带具体时间的课表和日期清单。模型识别课程名、教师、星期或日期、节次、周次、教室及明确写出的时间。</p>
-          <label class="wallpaper-upload import-upload"><input id="scheduleFile" type="file" accept=".pdf,application/pdf"><span>＋ 选择 PDF 课表</span></label>
-          <p class="import-file-name" id="scheduleFileName">尚未选择文件</p>
-        </div>
-      </details>
-      <div class="dialog-actions"><button value="cancel" class="quiet-button">取消</button><button type="button" class="primary-button" id="aiImport">智能解析并导入</button></div>
     </form>
   </dialog>
 
