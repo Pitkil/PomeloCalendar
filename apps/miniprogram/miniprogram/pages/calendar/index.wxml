@@ -240,7 +240,7 @@
       <label class="field"><text>接口地址</text><input value="{{settings.modelBaseUrl}}" data-field="modelBaseUrl" bindinput="onSettingsInput" placeholder="https://api.example.com/v1" /></label>
       <label class="field"><text>模型名称</text><input value="{{settings.modelName}}" data-field="modelName" bindinput="onSettingsInput" placeholder="例如：deepseek-chat" /></label>
       <label class="field"><text>API Key</text><input password="true" value="{{settings.modelApiKey}}" data-field="modelApiKey" bindinput="onSettingsInput" placeholder="仅保存在本机" /></label>
-      <view class="privacy-tip">支持 OpenAI、Gemini、Claude 直读 PDF，以及 DeepSeek、Kimi、通义千问、智谱、SiliconFlow 等 OpenAI 兼容文本接口。正式版需将所选服务商域名加入 request 合法域名。</view>
+      <view class="privacy-tip">PDF、TXT、CSV、DOCX、XLSX、XLS 都会先在小程序本地提取文字，再发送给当前模型；支持 DeepSeek、OpenAI、Gemini、Claude、Kimi、通义千问、智谱、SiliconFlow 和自定义兼容接口。正式版需将所选服务商域名加入 request 合法域名。</view>
       <view class="two-fields">
         <label class="field"><text>主题色</text><picker range="{{accentOptions}}" range-key="name" bindchange="onAccentChange"><view class="picker-field">点击选择</view></picker></label>
         <label class="field"><text>预设壁纸</text><picker range="{{wallpaperOptions}}" range-key="name" bindchange="onWallpaperChange"><view class="picker-field">点击选择</view></picker></label>
@@ -257,10 +257,10 @@
       <view class="sheet-handle"></view>
       <view class="sheet-title">导入课表</view>
       <view class="privacy-tip strong">当前模型：{{modelOptions[modelIndex].name}} · 使用你自己的 API Key。模型会识别网格课表、具体时间列表和日期清单。</view>
-      <textarea class="schedule-text-input" value="{{scheduleText}}" bindinput="onScheduleTextInput" placeholder="粘贴课表文本，适用于 DeepSeek、Kimi、通义千问、智谱、SiliconFlow 和自定义兼容模型" />
+      <textarea class="schedule-text-input" value="{{scheduleText}}" bindinput="onScheduleTextInput" placeholder="也可以直接粘贴课表文字" />
       <view class="primary-button standalone-button" bindtap="parseScheduleText" role="button">解析粘贴的课表文本</view>
-      <view wx:if="{{modelSupportsPdf}}" class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 直接选择 PDF（OpenAI / Gemini / Claude）</view>
-      <view wx:else class="privacy-tip">当前模型是文本接口，不支持直接读取 PDF；请复制 PDF 中的课表文字并粘贴到上方。</view>
+      <view class="upload-button" bindtap="chooseScheduleFile" role="button">＋ 选择 PDF / TXT / DOCX / Excel 课表</view>
+      <view class="privacy-tip">文件先在本地转成文字，因此所有模型都能使用。扫描版 PDF 需要先做 OCR；旧版 DOC 请另存为 DOCX。</view>
       <view wx:if="{{settings.portalUrl}}" class="manual-login-link" bindtap="openPortal" role="button">↗ 复制 {{settings.schoolName}} 教务入口</view>
       <view class="sheet-actions"><view class="secondary-button" bindtap="closeSync" role="button">取消</view></view>
     </view>

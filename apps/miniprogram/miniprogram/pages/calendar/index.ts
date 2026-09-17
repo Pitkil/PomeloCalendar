@@ -7,7 +7,6 @@ interface ModelPreset {
   protocol: ModelProtocol
   baseUrl: string
   model: string
-  supportsPdf: boolean
 }
 
 interface CalendarEvent {
@@ -72,18 +71,20 @@ const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
 const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
+const STORAGE_SELECTED_FILE = 'youke-selected-schedule-file'
+const STORAGE_EXTRACTED_FILE = 'youke-extracted-schedule-file'
 let timerId: number | undefined
 const DEFAULT_PERIOD_TIMES = '08:00-08:45,08:55-09:40,10:00-10:45,10:55-11:40,12:10-12:55,13:05-13:50,14:00-14:45,14:55-15:40,15:50-16:35,16:55-17:40,17:50-18:35,19:20-20:05,20:15-21:00,21:10-21:55'
 const MODEL_PRESETS: ModelPreset[] = [
-  { id: 'deepseek', name: 'DeepSeek', protocol: 'compatible', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat', supportsPdf: false },
-  { id: 'openai', name: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', supportsPdf: true },
-  { id: 'gemini', name: 'Google Gemini', protocol: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.5-flash', supportsPdf: true },
-  { id: 'anthropic', name: 'Anthropic Claude', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5', supportsPdf: true },
-  { id: 'kimi', name: 'Kimi / Moonshot', protocol: 'compatible', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k', supportsPdf: false },
-  { id: 'qwen', name: '通义千问 / Qwen', protocol: 'compatible', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', supportsPdf: false },
-  { id: 'zhipu', name: '智谱 GLM', protocol: 'compatible', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash', supportsPdf: false },
-  { id: 'siliconflow', name: 'SiliconFlow', protocol: 'compatible', baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V3', supportsPdf: false },
-  { id: 'custom', name: '自定义 OpenAI 兼容接口', protocol: 'compatible', baseUrl: '', model: '', supportsPdf: false }
+  { id: 'deepseek', name: 'DeepSeek', protocol: 'compatible', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { id: 'openai', name: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini' },
+  { id: 'gemini', name: 'Google Gemini', protocol: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.5-flash' },
+  { id: 'anthropic', name: 'Anthropic Claude', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5' },
+  { id: 'kimi', name: 'Kimi / Moonshot', protocol: 'compatible', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k' },
+  { id: 'qwen', name: '通义千问 / Qwen', protocol: 'compatible', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { id: 'zhipu', name: '智谱 GLM', protocol: 'compatible', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+  { id: 'siliconflow', name: 'SiliconFlow', protocol: 'compatible', baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V3' },
+  { id: 'custom', name: '自定义 OpenAI 兼容接口', protocol: 'compatible', baseUrl: '', model: '' }
 ]
 
 const trimBaseUrl = (value: string) => String(value || '').trim().replace(/\/+$/, '')
@@ -117,7 +118,7 @@ const requestJson = (url: string, header: Record<string, string>, data: unknown)
   })
 })
 
-const buildSchedulePrompt = (settings: Settings, scheduleText = '') => `你是课程表结构化助手。请从${scheduleText ? '下面的课表文本' : '随附的 PDF 课表'}中提取课程，不要猜测缺失信息。\n学校：${settings.schoolName}\n学期：${settings.semesterTitle}\n学期开始：${settings.semesterStart}\n教学周数：${settings.totalWeeks}\n默认节次时间：${settings.periodTimes}\n只返回合法 JSON，不要 Markdown：{"courses":[{"title":"课程名","teacher":"教师","place":"教室","weekday":1,"sessions":"1-2节","weeks":"1-16周","date":"YYYY-MM-DD 或空字符串","startTime":"HH:MM 或空字符串","endTime":"HH:MM 或空字符串"}]}。weekday 使用 1-7 表示周一至周日；按具体日期上课时填写 date；PDF 明确写出起止时间时必须保留。${scheduleText ? `\n课表文本：\n${scheduleText}` : ''}`
+const buildSchedulePrompt = (settings: Settings, scheduleText: string) => `你是课程表结构化助手。请从下面由用户课表文件提取的文字中识别课程，不要猜测缺失信息。\n学校：${settings.schoolName}\n学期：${settings.semesterTitle}\n学期开始：${settings.semesterStart}\n教学周数：${settings.totalWeeks}\n默认节次时间：${settings.periodTimes}\n只返回合法 JSON，不要 Markdown：{"courses":[{"title":"课程名","teacher":"教师","place":"教室","weekday":1,"sessions":"1-2节","weeks":"1-16周","date":"YYYY-MM-DD 或空字符串","startTime":"HH:MM 或空字符串","endTime":"HH:MM 或空字符串"}]}。weekday 使用 1-7 表示周一至周日；按具体日期上课时填写 date；课表明确写出起止时间时必须保留。\n课表文字：\n${scheduleText}`
 
 const extractResponseText = (body: any, protocol: ModelProtocol) => {
   if (protocol === 'gemini') return (body?.candidates?.[0]?.content?.parts || []).map((part: any) => part?.text || '').join('\n')
@@ -150,7 +151,7 @@ const parseCourseResponse = (raw: string): CourseLike[] => {
   throw new Error('模型返回的课程 JSON 格式不正确，请重试或更换模型')
 }
 
-const requestScheduleCourses = async (settings: Settings, scheduleText = '', pdfBase64 = '', fileName = 'schedule.pdf') => {
+const requestScheduleCourses = async (settings: Settings, scheduleText: string) => {
   const apiKey = String(settings.modelApiKey || '').trim()
   const baseUrl = trimBaseUrl(settings.modelBaseUrl)
   const model = String(settings.modelName || '').trim()
@@ -160,18 +161,14 @@ const requestScheduleCourses = async (settings: Settings, scheduleText = '', pdf
   let body: any
   if (protocol === 'openai') {
     const content: any[] = [{ type: 'input_text', text: prompt }]
-    if (pdfBase64) content.unshift({ type: 'input_file', filename: fileName, file_data: `data:application/pdf;base64,${pdfBase64}` })
     body = await requestJson(joinApiUrl(baseUrl, 'responses'), { Authorization: `Bearer ${apiKey}` }, { model, input: [{ role: 'user', content }] })
   } else if (protocol === 'gemini') {
     const parts: any[] = [{ text: prompt }]
-    if (pdfBase64) parts.unshift({ inline_data: { mime_type: 'application/pdf', data: pdfBase64 } })
     body = await requestJson(joinApiUrl(baseUrl, `models/${encodeURIComponent(model)}:generateContent`), { 'x-goog-api-key': apiKey }, { contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json' } })
   } else if (protocol === 'anthropic') {
     const content: any[] = [{ type: 'text', text: prompt }]
-    if (pdfBase64) content.unshift({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } })
     body = await requestJson(joinApiUrl(baseUrl, 'messages'), { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, { model, max_tokens: 8000, messages: [{ role: 'user', content }] })
   } else {
-    if (pdfBase64) throw new Error('当前模型使用文本接口，请粘贴课表文本；直接读取 PDF 请选 OpenAI、Gemini 或 Claude')
     body = await requestJson(joinApiUrl(baseUrl, 'chat/completions'), { Authorization: `Bearer ${apiKey}` }, { model, temperature: 0, messages: [{ role: 'user', content: prompt }] })
   }
   const courses = parseCourseResponse(extractResponseText(body, protocol))
@@ -351,7 +348,6 @@ Page({
     settings: defaultSettings(),
     modelOptions: MODEL_PRESETS,
     modelIndex: 0,
-    modelSupportsPdf: false,
     scheduleText: '',
     panelAlpha: '0.94',
     wallpaperStyle: '',
@@ -398,7 +394,6 @@ Page({
       : []
     const focusSeconds = settings.focusMinutes * 60
     const modelIndex = Math.max(0, MODEL_PRESETS.findIndex((item) => item.id === settings.modelPreset))
-    const modelOption = MODEL_PRESETS[modelIndex]
     this.setData({
       todayKey,
       selectedDate: todayKey,
@@ -406,7 +401,6 @@ Page({
       month: now.getMonth() + 1,
       settings,
       modelIndex,
-      modelSupportsPdf: modelOption.supportsPdf,
       panelAlpha: settings.cardOpacity >= 100 ? '1' : `0.${settings.cardOpacity}`,
       events: initialEvents,
       accounts: savedAccounts || [],
@@ -426,6 +420,18 @@ Page({
 
   onUnload() {
     if (timerId !== undefined) clearInterval(timerId)
+  },
+
+  async onShow() {
+    const extracted = wx.getStorageSync(STORAGE_EXTRACTED_FILE)
+    if (!extracted || !extracted.text) return
+    wx.removeStorageSync(STORAGE_EXTRACTED_FILE)
+    try {
+      await this.parseWithOwnModel(String(extracted.text))
+    } catch (error) {
+      wx.hideLoading()
+      wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
+    }
   },
 
   noop() {},
@@ -733,7 +739,6 @@ Page({
     const option = MODEL_PRESETS[modelIndex] || MODEL_PRESETS[0]
     this.setData({
       modelIndex,
-      modelSupportsPdf: option.supportsPdf,
       'settings.modelPreset': option.id,
       'settings.modelProtocol': option.protocol,
       'settings.modelBaseUrl': option.baseUrl,
@@ -892,22 +897,21 @@ Page({
   },
 
   chooseScheduleFile() {
-    wx.chooseMessageFile({ count: 1, type: 'file', success: async (result) => {
+    wx.chooseMessageFile({ count: 1, type: 'file', success: (result) => {
       const file = result.tempFiles[0]
-      if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
-      if (Number(file.size || 0) > 5 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 5MB 的 PDF 课表。', showCancel: false }); return }
-      try {
-        wx.showLoading({ title: '读取课表中', mask: true })
-        const readResult = await new Promise<any>((resolve, reject) => wx.getFileSystemManager().readFile({
-          filePath: file.path, encoding: 'base64', success: resolve, fail: reject
-        }))
-        const fileData = String(readResult.data || '')
-        if (!fileData) throw new Error('无法读取课表文件，请重新选择')
-        await this.parseWithOwnModel('', fileData, file.name || 'schedule.pdf')
-      } catch (error) {
-        wx.hideLoading()
-        wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
+      const name = String(file.name || file.path || '')
+      const match = name.toLowerCase().match(/\.([a-z0-9]+)$/)
+      const extension = match ? match[1] : ''
+      if (!['pdf', 'txt', 'csv', 'docx', 'xlsx', 'xls'].includes(extension)) {
+        wx.showModal({ title: '暂不支持这个文件', content: '请选择 PDF、TXT、CSV、DOCX、XLSX 或 XLS 课表。旧版 DOC 请先另存为 DOCX。', showCancel: false })
+        return
       }
+      if (Number(file.size || 0) > 8 * 1024 * 1024) {
+        wx.showModal({ title: '文件过大', content: '请选择不超过 8MB 的课表文件。', showCancel: false })
+        return
+      }
+      wx.setStorageSync(STORAGE_SELECTED_FILE, { path: file.path, name: file.name || `schedule.${extension}`, extension })
+      wx.navigateTo({ url: extension === 'pdf' ? '/features/pdf-import/index' : '/features/office-import/index' })
     } })
   },
 
@@ -924,9 +928,9 @@ Page({
     }
   },
 
-  async parseWithOwnModel(scheduleText = '', pdfBase64 = '', fileName = 'schedule.pdf') {
+  async parseWithOwnModel(scheduleText: string) {
     wx.showLoading({ title: '模型解析中', mask: true })
-    const courses = await requestScheduleCourses(this.data.settings as Settings, scheduleText, pdfBase64, fileName)
+    const courses = await requestScheduleCourses(this.data.settings as Settings, scheduleText)
     this.replaceRemoteCourses(courses)
     this.setData({ syncVisible: false, scheduleText: '', syncStatus: `智能导入 ${courses.length} 门课程` })
     wx.hideLoading()

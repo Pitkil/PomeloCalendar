@@ -1,0 +1,5 @@
+<view class="import-page">
+  <view class="loader"></view>
+  <view class="title">正在本地读取课表</view>
+  <view class="description">支持 TXT、CSV、DOCX、XLSX 和 XLS。文件不会上传到项目服务器。</view>
+</view>

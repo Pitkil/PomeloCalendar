@@ -1,0 +1,6 @@
+page { min-height: 100%; background: #f4f1e8; color: #183c33; }
+.import-page { min-height: 80vh; padding: 0 64rpx; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; box-sizing: border-box; }
+.loader { width: 64rpx; height: 64rpx; border: 8rpx solid rgba(23, 107, 85, .16); border-top-color: #176b55; border-radius: 50%; animation: spin .8s linear infinite; }
+.title { margin-top: 36rpx; font-size: 36rpx; font-weight: 700; }
+.description { margin-top: 20rpx; color: #6b756f; font-size: 26rpx; line-height: 1.7; }
+@keyframes spin { to { transform: rotate(360deg); } }

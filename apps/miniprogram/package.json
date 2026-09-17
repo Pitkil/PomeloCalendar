@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "柚课日历微信小程序：适配不同学校的课表导入、校园日历、学习计时、记账和个性化壁纸。",
   "scripts": {
+    "build:extractors": "node scripts/build-extractors.mjs",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -14,7 +15,11 @@
   "author": "",
   "license": "",
   "devDependencies": {
+    "@e965/xlsx": "0.20.3",
+    "esbuild": "^0.25.9",
+    "fflate": "^0.8.2",
     "miniprogram-api-typings": "^2.8.3-1",
+    "pdfjs-dist": "^2.16.105",
     "typescript": "5.9.2"
   }
 }

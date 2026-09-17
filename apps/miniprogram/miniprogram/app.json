@@ -2,6 +2,16 @@
   "pages": [
     "pages/calendar/index"
   ],
+  "subPackages": [
+    {
+      "root": "features/pdf-import",
+      "pages": ["index"]
+    },
+    {
+      "root": "features/office-import",
+      "pages": ["index"]
+    }
+  ],
   "window": {
     "backgroundTextStyle": "dark",
     "navigationBarBackgroundColor": "#f4f1e8",
