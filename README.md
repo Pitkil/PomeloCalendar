@@ -7,20 +7,19 @@
     <img alt="WeChat Mini Program" src="https://img.shields.io/badge/WeChat-Mini%20Program-07C160?logo=wechat&logoColor=white">
     <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white">
     <img alt="Vanilla Web" src="https://img.shields.io/badge/Web-Vanilla%20JS-F7DF1E?logo=javascript&logoColor=111">
-    <img alt="Node.js" src="https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white">
   </p>
 </div>
 
 ![Youke Calendar product interface](assets/readme/youke-calendar-hero.png)
 
-Youke Calendar is a campus productivity toolkit for university students. It combines a native WeChat Mini Program, a responsive single-page web app, and an AI-assisted PDF timetable parser. The project is not tied to one university: school names, academic portals, semester details, and class-period times are configurable. New users start with an empty calendar and can add events or import a timetable when they are ready.
+Youke Calendar is a campus productivity toolkit for university students. It combines a native WeChat Mini Program with a responsive, fully offline single-page web app. The project is not tied to one university: school names, academic portals, semester details, and class-period times are configurable. New users start with an empty calendar and can add events or import a timetable when they are ready.
 
 ## Features
 
 | Area | What it provides |
 | --- | --- |
 | Calendar and timetable | Monthly calendar, weekly timetable, teaching-week tracking, personal events, search, completion state, and conflict warnings |
-| AI-assisted PDF import | Mini Program only: supports traditional weekly grids, lists with exact start/end times, and date-based course schedules |
+| Bring-your-own-model import | Mini Program only: users configure their own provider, model name, endpoint, and API key |
 | Study timer | Countdown and stopwatch tasks, configurable focus/rest durations, and completed study records |
 | Campus budgeting | Income and expense entries, category summaries, and trend visualization |
 | Insights | Study-time totals, income/expense breakdowns, and recent trends |
@@ -29,14 +28,14 @@ Youke Calendar is a campus productivity toolkit for university students. It comb
 
 ## Supported timetable formats
 
-The parser sends text extracted from academic-system PDFs to an OpenAI-compatible model and structures the response as course data. It can capture course names, instructors, rooms, weekdays or exact dates, class periods, teaching weeks, and explicit start/end times. Automated tests currently cover:
+The Mini Program sends timetable content directly to the model provider selected by the user. It can capture course names, instructors, rooms, weekdays or exact dates, class periods, teaching weeks, and explicit start/end times. Supported presets include OpenAI, Gemini, Claude, DeepSeek, Kimi, Qwen, GLM, and SiliconFlow, plus a custom OpenAI-compatible endpoint.
 
 - Traditional weekday-by-period timetable grids
 - Course lists that include exact start and end times
 - Date-based schedules without a recurring weekday
-- A representative regression sample exported from a university academic system
+- Representative timetable text copied from a university academic system
 
-Parsing intentionally relies on the model response and has no local rule-based fallback. Results from scanned, unusually formatted, or low-quality PDFs depend on the configured model, so imported times should always be reviewed.
+OpenAI, Gemini, and Claude presets can receive PDF files directly. Other presets use pasted timetable text through OpenAI-compatible chat APIs. Parsing intentionally relies on the selected model and has no local rule-based fallback, so imported times should always be reviewed.
 
 ## Repository structure
 
@@ -45,8 +44,6 @@ Parsing intentionally relies on the model response and has no local rule-based f
 ├─ apps/
 │  ├─ miniprogram/          # Native WeChat Mini Program (TypeScript)
 │  └─ web/                  # Responsive single-page web app
-├─ services/
-│  └─ schedule-parser/      # PDF extraction and AI course structuring
 ├─ assets/
 │  ├─ readme/               # README promotional assets
 │  └─ youke-calendar-avatar.png
@@ -70,7 +67,9 @@ npm install
 npm run typecheck
 ```
 
-PDF import also requires the parser service below to be deployed in the same WeChat CloudBase environment as the Mini Program. The current service name and environment ID are defined in `miniprogram/app.ts` and `miniprogram/pages/calendar/index.ts`; update both when deploying to your own environment.
+For AI timetable import, open Calendar Settings and choose a model provider, then enter your own endpoint, model name, and API key. OpenAI, Gemini, and Claude can read PDFs directly; text-only providers parse timetable text pasted into the import panel.
+
+Before releasing the Mini Program, add every provider domain you intend to support to **Development → Development Management → Development Settings → Server Domain Names → request legal domains** in the WeChat public platform. Custom endpoints also need to be allowlisted there.
 
 ### Web app
 
@@ -82,31 +81,12 @@ python -m http.server 8080
 
 Then visit `http://localhost:8080/apps/web/`. Courses are added locally through “Add Event” with the “Course” category. PDF import and cloud synchronization are intentionally not included in the web version.
 
-### Schedule parser service
-
-```bash
-cd services/schedule-parser
-npm install
-copy .env.example .env
-npm start
-```
-
-Configure at least these server-side environment variables:
-
-```dotenv
-OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=https://api.deepseek.com
-OPENAI_MODEL=deepseek-v4-flash
-```
-
-The local synchronous endpoint is `http://127.0.0.1:8788/api/schedule/parse`. The Mini Program uses asynchronous job endpoints, so the service must be deployed to its associated WeChat CloudBase environment. See [`services/schedule-parser/README.md`](services/schedule-parser/README.md) for the endpoint and CloudBase details. API keys belong only in server-side environment variables—never in the web app, Mini Program source, or Git history.
-
 ## Data and privacy
 
 - Events, timetable data, study records, transactions, and appearance settings are stored locally by default.
 - The app does not request or store university sign-in credentials.
-- When the Mini Program imports a timetable, the PDF is temporarily sent to the parser service; asynchronous jobs clear temporary PDF content after success or failure.
-- The model API key remains in server-side environment variables.
+- The user's model API key is stored only in local Mini Program storage. It is never committed to the repository or sent to a project-owned server.
+- Timetable text or PDF content is sent directly from the Mini Program to the provider selected by the user and is subject to that provider's privacy policy.
 - The web version makes no backend requests and keeps its application data in the current browser.
 
 ## Verification
@@ -116,20 +96,17 @@ The local synchronous endpoint is `http://127.0.0.1:8788/api/schedule/parse`. Th
 cd apps/miniprogram
 npm run typecheck
 
-# Parser service tests
-cd ../../services/schedule-parser
-npm test
-
-# JavaScript syntax checks (from the repository root)
+# JavaScript syntax check (from the repository root)
 node --check apps/web/app.js
-node --check services/schedule-parser/server.cjs
 ```
 
-The parser currently has five automated test cases. The project also verifies mappings such as `Periods 1–2 → 08:00–09:40`, `Periods 7–9 → 14:00–16:35`, and `Periods 12–14 → 19:20–21:55`.
+The Mini Program type check covers the provider adapters and timetable-to-event conversion. Period mappings include `Periods 1–2 → 08:00–09:40`, `Periods 7–9 → 14:00–16:35`, and `Periods 12–14 → 19:20–21:55`.
 
 ## Known limitations
 
-- Mini Program AI-assisted import requires a separately deployed parser service and may incur model or cloud-resource costs.
+- Users need their own model account and API key; provider usage may incur charges.
+- WeChat production builds can only call model domains configured in the Mini Program's request-domain allowlist.
+- Direct PDF input is limited to the OpenAI, Gemini, and Claude adapters; other providers require pasted timetable text.
 - The web version supports manual course entry but does not import timetable PDFs.
 - PDF layouts vary widely, and users remain responsible for reviewing imported course data.
 - Web data is stored in the current browser and will not survive cleared site data or automatically move to another device.

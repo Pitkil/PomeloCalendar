@@ -1,4 +1,14 @@
 type EventSource = 'personal' | 'course' | 'focus'
+type ModelProtocol = 'openai' | 'gemini' | 'anthropic' | 'compatible'
+
+interface ModelPreset {
+  id: string
+  name: string
+  protocol: ModelProtocol
+  baseUrl: string
+  model: string
+  supportsPdf: boolean
+}
 
 interface CalendarEvent {
   id: string
@@ -29,6 +39,11 @@ interface Settings {
   wallpaper: string
   customWallpaper: string
   cardOpacity: number
+  modelPreset: string
+  modelProtocol: ModelProtocol
+  modelBaseUrl: string
+  modelName: string
+  modelApiKey: string
 }
 
 interface AccountEntry { id: string; type: 'expense' | 'income'; amount: number; category: string; date: string; note: string }
@@ -57,58 +72,112 @@ const STORAGE_EVENTS = 'swu-calendar-events-v2'
 const STORAGE_SETTINGS = 'swu-calendar-settings-v2'
 const STORAGE_FOCUS = 'swu-calendar-focus-v2'
 const STORAGE_ACCOUNTS = 'swu-calendar-accounts-v1'
-const CLOUD_ENV_ID = 'cloud1-d4gevz3o6da314ea9'
-const CLOUD_SERVICE_NAME = 'swu-calendar-ai'
 let timerId: number | undefined
 const DEFAULT_PERIOD_TIMES = '08:00-08:45,08:55-09:40,10:00-10:45,10:55-11:40,12:10-12:55,13:05-13:50,14:00-14:45,14:55-15:40,15:50-16:35,16:55-17:40,17:50-18:35,19:20-20:05,20:15-21:00,21:10-21:55'
+const MODEL_PRESETS: ModelPreset[] = [
+  { id: 'deepseek', name: 'DeepSeek', protocol: 'compatible', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat', supportsPdf: false },
+  { id: 'openai', name: 'OpenAI', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', supportsPdf: true },
+  { id: 'gemini', name: 'Google Gemini', protocol: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', model: 'gemini-2.5-flash', supportsPdf: true },
+  { id: 'anthropic', name: 'Anthropic Claude', protocol: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-5', supportsPdf: true },
+  { id: 'kimi', name: 'Kimi / Moonshot', protocol: 'compatible', baseUrl: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-32k', supportsPdf: false },
+  { id: 'qwen', name: '通义千问 / Qwen', protocol: 'compatible', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', supportsPdf: false },
+  { id: 'zhipu', name: '智谱 GLM', protocol: 'compatible', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash', supportsPdf: false },
+  { id: 'siliconflow', name: 'SiliconFlow', protocol: 'compatible', baseUrl: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V3', supportsPdf: false },
+  { id: 'custom', name: '自定义 OpenAI 兼容接口', protocol: 'compatible', baseUrl: '', model: '', supportsPdf: false }
+]
 
-const callScheduleServiceOnce = (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => new Promise<any>((resolve, reject) => {
-  ;(wx.cloud as any).callContainer({
-    config: { env: CLOUD_ENV_ID }, service: CLOUD_SERVICE_NAME, path, method,
-    // 同时传 service 和旧版 SDK 使用的路由请求头，兼容不同基础库版本。
-    header: { 'X-WX-SERVICE': CLOUD_SERVICE_NAME, 'content-type': 'application/json' }, data, timeout: 120000,
+const trimBaseUrl = (value: string) => String(value || '').trim().replace(/\/+$/, '')
+const joinApiUrl = (baseUrl: string, path: string) => `${trimBaseUrl(baseUrl)}/${path.replace(/^\/+/, '')}`
+
+const requestJson = (url: string, header: Record<string, string>, data: unknown) => new Promise<any>((resolve, reject) => {
+  wx.request({
+    url,
+    method: 'POST',
+    header: { 'content-type': 'application/json', ...header },
+    data,
+    timeout: 120000,
     success: (response: any) => {
       const statusCode = Number(response.statusCode || 0)
-      let body: any = response.data || {}
-      if (typeof body === 'string') {
-        try {
-          body = JSON.parse(body || '{}')
-        } catch {
-          const gatewayError = new Error(statusCode === 413 ? '课表文件超过云托管请求限制' : `解析服务网关暂时异常（${statusCode || '无状态码'}）`)
-          ;(gatewayError as any).retryable = statusCode === 408 || statusCode === 429 || statusCode >= 500 || /^\s*</.test(body)
-          reject(gatewayError)
-          return
-        }
-      }
+      const body = response.data || {}
       if (statusCode < 200 || statusCode >= 300) {
-        const responseError = new Error(body?.error || `解析服务返回 ${statusCode || '未知状态'}`)
-        ;(responseError as any).retryable = statusCode === 408 || statusCode === 429 || statusCode >= 500
-        reject(responseError)
+        const message = body?.error?.message || body?.error || body?.message || `模型接口返回 ${statusCode || '未知状态'}`
+        reject(new Error(String(message)))
         return
       }
       resolve(body)
     },
     fail: (error: any) => {
       const message = String(error?.errMsg || '')
-      const retryable = /102002|timeout|超时|network|socket|tls|disconnected|eof|连接|request:fail/i.test(message)
-      const connectionError = /102002|timeout|超时/i.test(message) ? new Error('连接解析服务超时，请稍后重试') : new Error('连接解析服务中断，正在自动重试')
-      ;(connectionError as any).retryable = retryable
-      reject(connectionError)
+      if (/url not in domain list|合法域名|domain/i.test(message)) {
+        reject(new Error('该模型域名未加入微信小程序 request 合法域名，请先在公众平台配置'))
+        return
+      }
+      reject(new Error(/timeout|超时/i.test(message) ? '模型响应超时，请稍后重试' : `无法连接模型接口：${message || '网络异常'}`))
     }
   })
 })
 
-const callScheduleService = async (path: string, method: 'GET' | 'POST' = 'GET', data?: Record<string, unknown>) => {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try { return await callScheduleServiceOnce(path, method, data) } catch (error) {
-      if (!(error as any)?.retryable || attempt >= 3) throw error
-      await wait(600 * (attempt + 1))
-    }
+const buildSchedulePrompt = (settings: Settings, scheduleText = '') => `你是课程表结构化助手。请从${scheduleText ? '下面的课表文本' : '随附的 PDF 课表'}中提取课程，不要猜测缺失信息。\n学校：${settings.schoolName}\n学期：${settings.semesterTitle}\n学期开始：${settings.semesterStart}\n教学周数：${settings.totalWeeks}\n默认节次时间：${settings.periodTimes}\n只返回合法 JSON，不要 Markdown：{"courses":[{"title":"课程名","teacher":"教师","place":"教室","weekday":1,"sessions":"1-2节","weeks":"1-16周","date":"YYYY-MM-DD 或空字符串","startTime":"HH:MM 或空字符串","endTime":"HH:MM 或空字符串"}]}。weekday 使用 1-7 表示周一至周日；按具体日期上课时填写 date；PDF 明确写出起止时间时必须保留。${scheduleText ? `\n课表文本：\n${scheduleText}` : ''}`
+
+const extractResponseText = (body: any, protocol: ModelProtocol) => {
+  if (protocol === 'gemini') return (body?.candidates?.[0]?.content?.parts || []).map((part: any) => part?.text || '').join('\n')
+  if (protocol === 'anthropic') return (body?.content || []).map((part: any) => part?.text || '').join('\n')
+  if (protocol === 'openai') {
+    if (body?.output_text) return String(body.output_text)
+    return (body?.output || []).flatMap((item: any) => item?.content || []).map((part: any) => part?.text || '').join('\n')
   }
-  throw new Error('暂时无法连接解析服务，请稍后重试')
+  return String(body?.choices?.[0]?.message?.content || '')
 }
 
-const wait = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
+const parseCourseResponse = (raw: string): CourseLike[] => {
+  const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  const candidates = [text]
+  const objectStart = text.indexOf('{')
+  const objectEnd = text.lastIndexOf('}')
+  if (objectStart >= 0 && objectEnd > objectStart) candidates.push(text.slice(objectStart, objectEnd + 1))
+  const arrayStart = text.indexOf('[')
+  const arrayEnd = text.lastIndexOf(']')
+  if (arrayStart >= 0 && arrayEnd > arrayStart) candidates.push(text.slice(arrayStart, arrayEnd + 1))
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate)
+      const rows = Array.isArray(parsed) ? parsed : parsed?.courses
+      if (Array.isArray(rows)) {
+        return rows.filter((row) => row && (row.title || row.kcmc) && (row.date || row.weekday || row.xqj))
+      }
+    } catch {}
+  }
+  throw new Error('模型返回的课程 JSON 格式不正确，请重试或更换模型')
+}
+
+const requestScheduleCourses = async (settings: Settings, scheduleText = '', pdfBase64 = '', fileName = 'schedule.pdf') => {
+  const apiKey = String(settings.modelApiKey || '').trim()
+  const baseUrl = trimBaseUrl(settings.modelBaseUrl)
+  const model = String(settings.modelName || '').trim()
+  if (!apiKey || !baseUrl || !model) throw new Error('请先在大模型设置中填写 API Key、接口地址和模型名称')
+  const prompt = buildSchedulePrompt(settings, scheduleText)
+  const protocol = settings.modelProtocol
+  let body: any
+  if (protocol === 'openai') {
+    const content: any[] = [{ type: 'input_text', text: prompt }]
+    if (pdfBase64) content.unshift({ type: 'input_file', filename: fileName, file_data: `data:application/pdf;base64,${pdfBase64}` })
+    body = await requestJson(joinApiUrl(baseUrl, 'responses'), { Authorization: `Bearer ${apiKey}` }, { model, input: [{ role: 'user', content }] })
+  } else if (protocol === 'gemini') {
+    const parts: any[] = [{ text: prompt }]
+    if (pdfBase64) parts.unshift({ inline_data: { mime_type: 'application/pdf', data: pdfBase64 } })
+    body = await requestJson(joinApiUrl(baseUrl, `models/${encodeURIComponent(model)}:generateContent`), { 'x-goog-api-key': apiKey }, { contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json' } })
+  } else if (protocol === 'anthropic') {
+    const content: any[] = [{ type: 'text', text: prompt }]
+    if (pdfBase64) content.unshift({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } })
+    body = await requestJson(joinApiUrl(baseUrl, 'messages'), { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, { model, max_tokens: 8000, messages: [{ role: 'user', content }] })
+  } else {
+    if (pdfBase64) throw new Error('当前模型使用文本接口，请粘贴课表文本；直接读取 PDF 请选 OpenAI、Gemini 或 Claude')
+    body = await requestJson(joinApiUrl(baseUrl, 'chat/completions'), { Authorization: `Bearer ${apiKey}` }, { model, temperature: 0, messages: [{ role: 'user', content: prompt }] })
+  }
+  const courses = parseCourseResponse(extractResponseText(body, protocol))
+  if (!courses.length) throw new Error('模型没有识别到有效课程，请检查内容后重试')
+  return courses
+}
 
 const pad = (value: number) => String(value).padStart(2, '0')
 
@@ -146,7 +215,12 @@ const defaultSettings = (): Settings => {
     accent: '#176b55',
     wallpaper: 'paper',
     customWallpaper: '',
-    cardOpacity: 94
+    cardOpacity: 94,
+    modelPreset: 'deepseek',
+    modelProtocol: 'compatible',
+    modelBaseUrl: 'https://api.deepseek.com',
+    modelName: 'deepseek-chat',
+    modelApiKey: ''
   }
 }
 
@@ -275,6 +349,10 @@ Page({
       location: '', notes: '', color: '#d76a4a'
     },
     settings: defaultSettings(),
+    modelOptions: MODEL_PRESETS,
+    modelIndex: 0,
+    modelSupportsPdf: false,
+    scheduleText: '',
     panelAlpha: '0.94',
     wallpaperStyle: '',
     accentOptions: [
@@ -319,12 +397,16 @@ Page({
       ? savedEvents.filter((item) => !(item.id?.startsWith('welcome-') && item.title === '完成校园日历实验' && item.notes === '体验新增、编辑、搜索和番茄钟。'))
       : []
     const focusSeconds = settings.focusMinutes * 60
+    const modelIndex = Math.max(0, MODEL_PRESETS.findIndex((item) => item.id === settings.modelPreset))
+    const modelOption = MODEL_PRESETS[modelIndex]
     this.setData({
       todayKey,
       selectedDate: todayKey,
       year: now.getFullYear(),
       month: now.getMonth() + 1,
       settings,
+      modelIndex,
+      modelSupportsPdf: modelOption.supportsPdf,
       panelAlpha: settings.cardOpacity >= 100 ? '1' : `0.${settings.cardOpacity}`,
       events: initialEvents,
       accounts: savedAccounts || [],
@@ -646,6 +728,19 @@ Page({
     this.applyWallpaper()
   },
 
+  onModelProviderChange(event: any) {
+    const modelIndex = Number(event.detail.value)
+    const option = MODEL_PRESETS[modelIndex] || MODEL_PRESETS[0]
+    this.setData({
+      modelIndex,
+      modelSupportsPdf: option.supportsPdf,
+      'settings.modelPreset': option.id,
+      'settings.modelProtocol': option.protocol,
+      'settings.modelBaseUrl': option.baseUrl,
+      'settings.modelName': option.model
+    })
+  },
+
   chooseWallpaper() {
     wx.chooseMedia({
       count: 1,
@@ -672,7 +767,10 @@ Page({
       totalWeeks: Math.max(1, Number(this.data.settings.totalWeeks || 19)),
       focusMinutes: Math.max(1, Number(this.data.settings.focusMinutes || 25)),
       breakMinutes: Math.max(1, Number(this.data.settings.breakMinutes || 5)),
-      cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94)))
+      cardOpacity: Math.max(70, Math.min(100, Number(this.data.settings.cardOpacity || 94))),
+      modelBaseUrl: trimBaseUrl(this.data.settings.modelBaseUrl),
+      modelName: String(this.data.settings.modelName || '').trim(),
+      modelApiKey: String(this.data.settings.modelApiKey || '').trim()
     }
     const seconds = settings.focusMinutes * 60
     this.setData({
@@ -785,7 +883,7 @@ Page({
     wx.showModal({ title: '学习记录已保存', content: `已记录 ${minutes} 分钟${stopwatch ? '学习' : '专注'}。`, showCancel: false })
   },
 
-  openSync() { this.setData({ syncVisible: true }) },
+  openSync() { this.setData({ syncVisible: true, scheduleText: '' }) },
   closeSync() { this.setData({ syncVisible: false }) },
   openPortal() {
     const url = String(this.data.settings.portalUrl || '').trim()
@@ -798,7 +896,6 @@ Page({
       const file = result.tempFiles[0]
       if (!/\.pdf$/i.test(file.name || file.path)) { wx.showToast({ title: '请选择 PDF 课表', icon: 'none' }); return }
       if (Number(file.size || 0) > 5 * 1024 * 1024) { wx.showModal({ title: '文件过大', content: '请选择不超过 5MB 的 PDF 课表。', showCancel: false }); return }
-      const clientRequestId = `mini-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
       try {
         wx.showLoading({ title: '读取课表中', mask: true })
         const readResult = await new Promise<any>((resolve, reject) => wx.getFileSystemManager().readFile({
@@ -806,37 +903,34 @@ Page({
         }))
         const fileData = String(readResult.data || '')
         if (!fileData) throw new Error('无法读取课表文件，请重新选择')
-
-        wx.showLoading({ title: '正在创建任务', mask: true })
-        const created = await callScheduleService('/api/schedule/jobs-base64', 'POST', { fileData, fileName: file.name || 'schedule.pdf', clientRequestId, schoolName: this.data.settings.schoolName })
-        if (!created.jobId) throw new Error('解析任务创建失败，请稍后重试')
-
-        wx.showLoading({ title: '模型解析中', mask: true })
-        let completed: any
-        for (let attempt = 0; attempt < 150; attempt += 1) {
-          if (attempt) await wait(2000)
-          let job: any
-          try {
-            job = await callScheduleService(`/api/schedule/jobs/${encodeURIComponent(created.jobId)}`)
-          } catch (error) {
-            // 云托管冷启动或移动网络抖动时，查询可能短暂超时；任务仍在服务端运行，继续轮询即可。
-            if ((error as any)?.retryable) continue
-            throw error
-          }
-          if (job.status === 'succeeded') { completed = job; break }
-          if (job.status === 'failed') throw new Error(job.error || '课表解析失败，请稍后重试')
-        }
-        if (!completed) throw new Error('解析时间较长，请稍后重新查看或再次导入')
-        if (!Array.isArray(completed.courses) || !completed.courses.length) throw new Error('模型未识别到有效课程')
-        this.replaceRemoteCourses(completed.courses)
-        this.setData({ syncVisible: false, syncStatus: `智能导入 ${completed.courses.length} 门课程` })
-        wx.hideLoading()
-        wx.showToast({ title: `导入 ${completed.courses.length} 门课程`, icon: 'success' })
+        await this.parseWithOwnModel('', fileData, file.name || 'schedule.pdf')
       } catch (error) {
         wx.hideLoading()
         wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
       }
     } })
+  },
+
+  onScheduleTextInput(event: any) { this.setData({ scheduleText: event.detail.value }) },
+
+  async parseScheduleText() {
+    const text = String(this.data.scheduleText || '').trim()
+    if (text.length < 20) { wx.showToast({ title: '请先粘贴课表文本', icon: 'none' }); return }
+    try {
+      await this.parseWithOwnModel(text)
+    } catch (error) {
+      wx.hideLoading()
+      wx.showModal({ title: '智能解析失败', content: error instanceof Error ? error.message : '课表解析失败，请稍后重试', showCancel: false })
+    }
+  },
+
+  async parseWithOwnModel(scheduleText = '', pdfBase64 = '', fileName = 'schedule.pdf') {
+    wx.showLoading({ title: '模型解析中', mask: true })
+    const courses = await requestScheduleCourses(this.data.settings as Settings, scheduleText, pdfBase64, fileName)
+    this.replaceRemoteCourses(courses)
+    this.setData({ syncVisible: false, scheduleText: '', syncStatus: `智能导入 ${courses.length} 门课程` })
+    wx.hideLoading()
+    wx.showToast({ title: `导入 ${courses.length} 门课程`, icon: 'success' })
   },
 
   replaceRemoteCourses(courses: CourseLike[]) {
